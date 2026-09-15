@@ -1,28 +1,72 @@
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#02030a;font-family:Arial,sans-serif;color:#fff;touch-action:none}
-canvas{display:block}
-#hud{position:fixed;inset:0;pointer-events:none;padding:18px 18px 0;z-index:5}
-.top{display:flex;justify-content:space-between;align-items:flex-start}
-.brand{font-size:20px;letter-spacing:4px;font-weight:800;text-shadow:0 0 14px #58d9ff}
-.brand b{font-size:28px}
-.stats{display:flex;gap:14px;font-size:10px;letter-spacing:1px;text-align:right}
-.stats span{display:flex;flex-direction:column;gap:3px;opacity:.8}
-.stats b{font-size:17px;opacity:1}
-.shield{position:absolute;left:18px;right:18px;top:67px;height:4px;background:rgba(255,255,255,.12);border-radius:5px}
-#shieldBar{width:100%;height:100%;background:#52dfff;box-shadow:0 0 10px #52dfff}
-#crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:22px;opacity:.25;z-index:4;pointer-events:none}
-#joystick{position:fixed;left:24px;bottom:30px;width:118px;height:118px;border:1px solid rgba(100,220,255,.35);border-radius:50%;background:rgba(20,50,80,.18);z-index:8}
-#stick{position:absolute;left:35px;top:35px;width:48px;height:48px;border-radius:50%;background:rgba(100,225,255,.35);box-shadow:0 0 22px rgba(80,210,255,.45)}
-button{border:1px solid rgba(110,225,255,.55);color:#dffaff;background:rgba(15,45,70,.42);backdrop-filter:blur(8px);font-weight:800;letter-spacing:2px}
-#boost,#fire{position:fixed;right:22px;width:82px;height:82px;border-radius:50%;z-index:8}
-#boost{bottom:122px}
-#fire{bottom:28px}
-button:active{transform:scale(.94);background:rgba(50,130,180,.55)}
-#gameOver{position:fixed;inset:0;display:grid;place-items:center;background:rgba(0,0,10,.72);backdrop-filter:blur(5px);z-index:20}
-#gameOver.hidden{display:none}
-.panel{text-align:center;padding:32px 35px;border:1px solid rgba(100,220,255,.4);background:rgba(5,12,25,.88);box-shadow:0 0 50px rgba(60,180,255,.12)}
-.over-title{font-size:25px;letter-spacing:5px;margin-bottom:20px}
-.final{font-size:12px;letter-spacing:2px;margin-bottom:25px}
-.final b{font-size:30px;display:block;margin-top:7px}
-#restart{padding:14px 26px;border-radius:8px}
-@media(max-height:600px){#joystick{bottom:15px}#boost{bottom:88px}#fire{bottom:12px}}
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #071923;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  touch-action: none;
+  user-select: none;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ================================
+   LANDSCAPE
+================================ */
+
+@media (orientation: portrait) {
+  body::after {
+    content: "PUTAR HP KE LANDSCAPE ↔";
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #071923;
+    color: white;
+    font-size: 20px;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+}
+
+/* ================================
+   BUTTON FEEDBACK
+================================ */
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.92);
+}
+
+/* ================================
+   SCROLLBAR
+================================ */
+
+::-webkit-scrollbar {
+  display: none;
+}
