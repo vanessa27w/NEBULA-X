@@ -1,593 +1,1697 @@
 /* =========================================================
-   VALEN ISLAND SURVIVAL — FINAL SINGLE-FILE BUILD
-   3D Android landscape survival game
-   Replace www/game.js completely with this file.
-   Requires Three.js r160 from index.html.
-========================================================= */
+   VALEN ISLAND SURVIVAL
+   FINAL STABLE ANDROID BUILD
+   3D SURVIVAL — NO MULTIPLAYER
+   ========================================================= */
+
 (() => {
 "use strict";
+
+/* =========================
+   SAFE START
+========================= */
+
 if (window.__VALEN_FINAL__) return;
 window.__VALEN_FINAL__ = true;
 
-const T = window.THREE;
-if (!T) {
-  document.body.innerHTML = '<div style="color:white;background:#071923;height:100vh;display:grid;place-items:center;font:700 22px Arial">Three.js gagal dimuat.</div>';
-  return;
+const THREE = window.THREE;
+
+if (!THREE) {
+    document.body.innerHTML = `
+        <div style="
+        position:fixed;inset:0;
+        display:flex;align-items:center;
+        justify-content:center;
+        background:#071923;color:white;
+        font:20px Arial;text-align:center">
+        THREE.JS GAGAL DIMUAT<br>
+        Periksa koneksi internet lalu buka ulang game.
+        </div>`;
+    return;
 }
 
-/* ---------- DATA ---------- */
-const KEY="VALEN_ISLAND_SURVIVAL_FINAL_V1";
-const SETTINGS_KEY="VALEN_SETTINGS_FINAL_V1";
-const defaults={
-  sensitivity:.006, invertY:false, joystickSize:1, buttonSize:1,
-  autoPickup:true, damageNumbers:true, cameraShake:true,
-  viewDistance:120, master:80, music:35, sfx:80, ambient:60,
-  mute:false, quality:"High", fps:60, shadows:true, effects:true,
-  language:"id", hud:true, vibration:true
+/* =========================
+   CONFIG
+========================= */
+
+const CFG = {
+    world: 220,
+    island: 82,
+    water: 280,
+    maxTrees: 90,
+    maxRocks: 70,
+    maxBushes: 45,
+    maxAnimals: 20
 };
-let settings=Object.assign({},defaults,JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}"));
-let save=Object.assign({
-  wood:0,stone:0,coconut:0,berries:0,fish:0,cookedFish:0,meat:0,cookedMeat:0,
-  crystal:0,metal:0,health:100,hunger:100,thirst:100,stamina:100,
-  quest:0,chapter:1,time:8,days:0,ended:false,beacon:false,
-  campfires:0,shelters:0,storages:0,achievements:[],kills:0,fishCaught:0,
-  x:0,z:5
-},JSON.parse(localStorage.getItem(KEY)||"{}"));
 
-/* ---------- UTILS ---------- */
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const rnd=(a,b)=>a+Math.random()*(b-a);
-const dist=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
-const pick=a=>a[Math.floor(Math.random()*a.length)];
-function saveGame(){localStorage.setItem(KEY,JSON.stringify(save));localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}
-function toast(msg){
-  const el=document.getElementById("toast")||makeToast();
-  el.textContent=msg; el.classList.add("show"); clearTimeout(el._t);
-  el._t=setTimeout(()=>el.classList.remove("show"),1800);
-}
-function makeToast(){
-  const e=document.createElement("div");e.id="toast";document.body.appendChild(e);return e;
-}
-function vibrate(ms=20){if(settings.vibration&&navigator.vibrate)navigator.vibrate(ms)}
-function mat(c,rough=.8,metal=0){return new T.MeshStandardMaterial({color:c,roughness:rough,metalness:metal});}
-function box(w,h,d,c){return new T.Mesh(new T.BoxGeometry(w,h,d),mat(c));}
-function cyl(r,h,c,seg=8){return new T.Mesh(new T.CylinderGeometry(r,r,h,seg),mat(c));}
-function textSprite(txt,color="#fff",size=48){
-  const cv=document.createElement("canvas"),cx=cv.getContext("2d");
-  cv.width=256;cv.height=96;cx.font=`bold ${size}px Arial`;cx.textAlign="center";cx.textBaseline="middle";
-  cx.fillStyle=color;cx.shadowColor="#000";cx.shadowBlur=8;cx.fillText(txt,128,48);
-  const tx=new T.CanvasTexture(cv),m=new T.SpriteMaterial({map:tx,transparent:true,depthTest:false});
-  const s=new T.Sprite(m);s.scale.set(2.4,.9,1);return s;
+/* =========================
+   SAVE
+========================= */
+
+const SAVE_KEY = "VALEN_SURVIVAL_SAVE_V6";
+
+let save = {
+    wood: 0,
+    stone: 0,
+    berry: 0,
+    coconut: 0,
+    fish: 0,
+
+    hunger: 100,
+    thirst: 100,
+    health: 100,
+    stamina: 100,
+
+    day: 1,
+    time: 8,
+    chapter: 1,
+
+    x: 0,
+    z: 12,
+
+    cooked: 0,
+    shelter: false,
+    campfire: false,
+    beacon: false,
+
+    achievements: []
+};
+
+try {
+    const old = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (old) save = Object.assign(save, old);
+} catch(e) {}
+
+function saveGame() {
+    try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    } catch(e) {}
 }
 
-/* ---------- CSS/UI ---------- */
-const style=document.createElement("style");
-style.textContent=`
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071923;font-family:Arial,sans-serif;touch-action:none;user-select:none}
-canvas{position:fixed;inset:0;display:block}
-#hud{position:fixed;inset:0;pointer-events:none;color:#fff}
-#top{position:absolute;left:18px;top:14px;width:250px;background:rgba(3,14,20,.65);padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:14px;backdrop-filter:blur(8px)}
-.bar{height:13px;background:#16252c;border-radius:9px;overflow:hidden;margin:5px 0}.bar i{display:block;height:100%;width:100%;border-radius:9px}
-#hp i{background:#ff5266}#food i{background:#ffb84d}#water i{background:#39bfff}#stam i{background:#64ed8a}
-#inv{position:absolute;left:18px;bottom:16px;background:rgba(3,14,20,.72);padding:9px 12px;border-radius:13px;font-size:13px;max-width:480px}
-#quest{position:absolute;top:14px;right:18px;width:310px;background:rgba(3,14,20,.65);padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.12)}
-#map{position:absolute;right:18px;bottom:18px;width:145px;height:145px;border-radius:50%;background:rgba(2,14,19,.78);border:2px solid rgba(255,255,255,.22)}
-.ctrl{position:absolute;pointer-events:auto;border:0;color:#fff;font-weight:900;border-radius:50%;background:rgba(10,30,38,.72);border:1px solid rgba(255,255,255,.2);box-shadow:0 8px 20px #0007}
-#joy{left:30px;bottom:65px;width:135px;height:135px;border-radius:50%;background:rgba(255,255,255,.08);border:2px solid #ffffff30;pointer-events:auto}
-#stick{position:absolute;width:58px;height:58px;left:37px;top:37px;border-radius:50%;background:#ffffff2a;border:2px solid #ffffff50}
-#run{right:190px;bottom:45px;width:68px;height:68px}#jump{right:105px;bottom:120px;width:64px;height:64px}
-#action{right:105px;bottom:38px;width:72px;height:72px;background:rgba(35,110,75,.78)}
-#fish{right:190px;bottom:125px;width:62px;height:62px}
-#build{right:275px;bottom:55px;width:58px;height:58px}
-#attack{right:275px;bottom:125px;width:58px;height:58px}
-#settingsBtn{position:absolute;right:18px;top:174px;width:48px;height:48px;border-radius:14px}
-#panelWrap{position:fixed;inset:0;display:none;place-items:center;background:#0009;z-index:9000;pointer-events:auto}
-#panel{width:min(720px,92vw);max-height:88vh;overflow:auto;background:#0b2029;color:#fff;border:1px solid #ffffff20;border-radius:20px;padding:20px;box-shadow:0 25px 80px #000}
-.row{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:10px 0}.row input[type=range]{width:52%}
-.panelBtns{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.panelBtns button,.menu button{padding:12px;border:0;border-radius:12px;background:#183c49;color:white;font-weight:bold}
-#menu,#buildMenu,#end{position:fixed;inset:0;z-index:9500;display:none;place-items:center;background:linear-gradient(#04131bcc,#061a22f2);color:white;text-align:center}
-.card{width:min(680px,90vw);background:#0c2731;border:1px solid #ffffff18;border-radius:24px;padding:28px;box-shadow:0 25px 80px #000}
-.card h1{font-size:clamp(28px,5vw,52px);margin:5px}.card p{color:#b9d2d8}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.grid button{min-height:65px}
-#weather{position:fixed;inset:0;pointer-events:none;z-index:100;display:none;background:linear-gradient(#ffffff08,#ffffff00)}
-#danger{position:fixed;inset:0;pointer-events:none;z-index:101;border:0 solid #f33;transition:border-width .2s}
-#toast{position:fixed;left:50%;bottom:12%;transform:translate(-50%,20px);opacity:0;background:#071923dd;color:#fff;padding:12px 18px;border-radius:14px;z-index:9999;transition:.2s;font-weight:bold;pointer-events:none}
-#toast.show{opacity:1;transform:translate(-50%,0)}
-#mp{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:300;color:#fff;background:rgba(3,14,20,.72);padding:7px 12px;border:1px solid #ffffff20;border-radius:999px;font-size:12px;font-weight:bold;backdrop-filter:blur(8px);pointer-events:none}
-#mpList{position:fixed;left:18px;top:145px;z-index:300;color:#dff;background:rgba(3,14,20,.58);padding:7px 10px;border-radius:10px;font-size:12px;max-width:190px;pointer-events:none}
-@media(max-height:500px){#top{transform:scale(.82);transform-origin:top left}#quest{transform:scale(.82);transform-origin:top right}.ctrl{transform:scale(.9)}}
+/* =========================
+   SCREEN
+========================= */
+
+document.body.innerHTML = "";
+
+document.body.style.cssText = `
+margin:0;
+overflow:hidden;
+background:#06151d;
+font-family:Arial,sans-serif;
+touch-action:none;
+user-select:none;
 `;
-document.head.appendChild(style);
 
-const hud=document.createElement("div");hud.id="hud";hud.innerHTML=`
-<div id="top"><b>VALEN ISLAND</b><div id="day">☀️ Day 1 • 08:00</div>
-<div id="hp" class="bar"><i></i></div><div id="food" class="bar"><i></i></div><div id="water" class="bar"><i></i></div><div id="stam" class="bar"><i></i></div></div>
-<div id="quest"></div><div id="inv"></div><canvas id="map" width="290" height="290"></canvas>
-<button id="settingsBtn" class="ctrl">⚙</button>
-<div id="joy"><div id="stick"></div></div>
-<button id="run" class="ctrl">🏃</button><button id="jump" class="ctrl">⬆</button>
-<button id="fish" class="ctrl">🎣</button><button id="action" class="ctrl">✋</button>
-<button id="build" class="ctrl">🔨</button><button id="attack" class="ctrl">⚔</button>
-</div>`;
-document.body.appendChild(hud);
-const mpStatus=document.createElement("div");mpStatus.id="mp";mpStatus.textContent="🟡 MULTIPLAYER: CONNECTING";document.body.appendChild(mpStatus);
-const mpList=document.createElement("div");mpList.id="mpList";mpList.textContent="Players: 1";document.body.appendChild(mpList);
-const wrap=document.createElement("div");wrap.id="panelWrap";wrap.innerHTML=`<div id="panel"><h2>⚙ SETTINGS</h2><div id="settingsContent"></div><button id="closePanel" style="margin-top:12px;width:100%;padding:13px;border:0;border-radius:12px">CLOSE</button></div>`;document.body.appendChild(wrap);
-const menu=document.createElement("div");menu.id="menu";menu.innerHTML=`<div class="card menu"><h1>VALEN ISLAND</h1><p>3D Tropical Survival</p><button id="continue">CONTINUE</button><button id="newgame">NEW GAME</button><p style="font-size:12px">Landscape • Touch • Autosave</p></div>`;document.body.appendChild(menu);
-const bm=document.createElement("div");bm.id="buildMenu";bm.innerHTML=`<div class="card menu"><h2>🔨 CRAFT & BUILD</h2><div class="grid">
-<button data-build="fire">🔥 Campfire<br><small>5 Wood + 3 Stone</small></button>
-<button data-build="shelter">🏕 Shelter<br><small>12 Wood + 8 Stone</small></button>
-<button data-build="storage">📦 Storage<br><small>10 Wood + 4 Stone</small></button>
-<button data-build="cookFish">🍳 Cook Fish<br><small>1 Fish</small></button>
-<button data-build="cookMeat">🥩 Cook Meat<br><small>1 Meat</small></button>
-<button data-build="close">✕ Close</button></div></div>`;document.body.appendChild(bm);
-const end=document.createElement("div");end.id="end";end.innerHTML=`<div class="card"><h1>🚁 RESCUED</h1><p>Beacon berhasil menembus kabut. Pulau ini belum benar-benar selesai menjawab misterinya.</p><button id="freeRoam" style="padding:14px;border:0;border-radius:12px">FREE ROAM</button></div>`;document.body.appendChild(end);
+const canvas = document.createElement("canvas");
+canvas.style.cssText = `
+position:fixed;
+inset:0;
+width:100%;
+height:100%;
+display:block;
+`;
+document.body.appendChild(canvas);
 
-/* ---------- THREE WORLD ---------- */
-const scene=new T.Scene();
-scene.background=new T.Color(0x78c9e8);
-scene.fog=new T.Fog(0x78c9e8,45,settings.viewDistance);
-const camera=new T.PerspectiveCamera(65,innerWidth/innerHeight,.1,settings.viewDistance);
-const renderer=new T.WebGLRenderer({antialias:true,powerPreference:"high-performance"});
-renderer.setPixelRatio(Math.min(devicePixelRatio,settings.quality==="Low"?1:settings.quality==="Medium"?1.5:2));
-renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled=settings.shadows;
-renderer.shadowMap.type=T.PCFSoftShadowMap;
-document.body.insertBefore(renderer.domElement,document.body.firstChild);
+/* =========================
+   RENDERER
+========================= */
 
-scene.add(new T.HemisphereLight(0xbdefff,0x29402c,1.35));
-const sun=new T.DirectionalLight(0xfff1c1,2.1);sun.position.set(-35,55,20);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);scene.add(sun);
+let renderer;
 
-const island=new T.Mesh(new T.CylinderGeometry(290,340,2,96),mat(0x4e8c3e));
-island.position.y=-1;island.scale.z=1.08;island.receiveShadow=true;scene.add(island);
-const beach=new T.Mesh(new T.CylinderGeometry(340,350,1,96),mat(0xd9bd78));beach.position.y=-2;beach.scale.z=1.08;scene.add(beach);
-const ocean=new T.Mesh(new T.CylinderGeometry(950,950,.8,96),new T.MeshStandardMaterial({color:0x147fa2,roughness:.18,metalness:.05,transparent:true,opacity:.94}));
-ocean.position.y=-2.55;scene.add(ocean);
-
-const objects=[],resources=[],animals=[],buildings=[],rain=[];
-function addObj(o,type,x,z,extra={}){
-  o.position.set(x,extra.y||0,z);o.userData=Object.assign({type},extra);scene.add(o);objects.push(o);return o;
-}
-function insideIsland(x,z){return (x*x)/(290*290)+(z*z)/(320*320)<1}
-
-function palm(x,z,scale=1){
-  const g=new T.Group();const trunk=cyl(.38,5,0x8a5a31,7);trunk.position.y=2.5;trunk.rotation.z=rnd(-.06,.06);g.add(trunk);
-  for(let i=0;i<7;i++){const leaf=new T.Mesh(new T.ConeGeometry(.35,5,5),mat(0x1c7b3e));leaf.position.y=5.1;leaf.rotation.z=Math.PI/2;leaf.rotation.y=i*Math.PI*2/7;leaf.translateX(1.8);g.add(leaf)}
-  g.scale.setScalar(scale);g.userData={type:"palm",phase:rnd(0,6)};scene.add(g);objects.push(g);
-}
-for(let i=0;i<140;i++){let a=rnd(0,Math.PI*2),r=rnd(35,275);palm(Math.cos(a)*r,Math.sin(a)*r,rnd(.75,1.25))}
-for(let i=0;i<100;i++){let a=rnd(0,6.28),r=rnd(20,275),x=Math.cos(a)*r,z=Math.sin(a)*r;
- if(!insideIsland(x,z))continue;
- const g=new T.Group();const tr=cyl(.45,3.2,0x67442a,8);tr.position.y=1.6;g.add(tr);
- const crown=new T.Mesh(new T.IcosahedronGeometry(2.0,1),mat(pick([0x287342,0x2d8b48,0x3d9b52])));crown.position.y=3.2;g.add(crown);
- addObj(g,"tree",x,z,{hp:3,resource:"wood"});
-}
-for(let i=0;i<150;i++){let a=rnd(0,6.28),r=rnd(20,290),x=Math.cos(a)*r,z=Math.sin(a)*r;if(!insideIsland(x,z))continue;
- const o=new T.Mesh(new T.DodecahedronGeometry(rnd(.45,.8),0),mat(0x6d7074));addObj(o,"rock",x,z,{hp:2,resource:"stone"});}
-for(let i=0;i<100;i++){let a=rnd(0,6.28),r=rnd(25,285),x=Math.cos(a)*r,z=Math.sin(a)*r;if(!insideIsland(x,z))continue;
- const o=new T.Mesh(new T.IcosahedronGeometry(.75,1),mat(0x9b3e4d));addObj(o,"berry",x,z,{resource:"berries"});}
-
-const ruins=new T.Group();for(let i=0;i<6;i++){let p=box(2.2,4+rnd(0,3),1,0x70665a);p.position.set((i-3)*3,2,rnd(-2,2));p.rotation.y=rnd(0,.4);ruins.add(p)}ruins.position.set(-210,0,-175);scene.add(ruins);
-const crystal=new T.Mesh(new T.OctahedronGeometry(1.15),new T.MeshStandardMaterial({color:0x69f4ff,emissive:0x1cc8dd,emissiveIntensity:1.4,roughness:.2,metalness:.25}));
-crystal.position.set(-214,1,-179);crystal.userData={type:"crystal"};scene.add(crystal);objects.push(crystal);
-
-/* ---------- PLAYER ---------- */
-const player=new T.Group();
-const body=cyl(.55,1.35,0x2266b3,10);body.position.y=1.0;player.add(body);
-const head=new T.Mesh(new T.SphereGeometry(.5,16,12),mat(0xf0b27a));head.position.y=2.05;player.add(head);
-const hat=cyl(.65,.22,0x172333,12);hat.position.y=2.48;player.add(hat);
-const pack=box(.72,.9,.35,0x493a2b);pack.position.set(0,1.1,-.48);player.add(pack);
-player.position.set(save.x||0,0,save.z||5);scene.add(player);
-
-/* ---------- ANIMALS ---------- */
-function animal(type,x,z){
- const g=new T.Group();const col=type==="boar"?0x69462e:0xc7b7a0;
- const b=new T.Mesh(new T.BoxGeometry(1.45,.75,2),mat(col));b.position.y=.7;g.add(b);
- const h=new T.Mesh(new T.SphereGeometry(.55,10,8),mat(col));h.position.set(0,.9,1);g.add(h);
- if(type==="boar"){for(let i=-1;i<=1;i+=2){let e=cyl(.11,.5,0x3b281d,6);e.position.set(i*.35,.25,.55);g.add(e)}}
- g.position.set(x,0,z);g.userData={type,hp:type==="boar"?30:10,dir:rnd(0,6.28),speed:type==="boar"?1.2:.8,next:0,alive:true};
- scene.add(g);animals.push(g);
-}
-for(let i=0;i<30;i++){let a=rnd(0,6.28),r=rnd(30,275);animal("boar",Math.cos(a)*r,Math.sin(a)*r)}
-for(let i=0;i<18;i++){let a=rnd(0,6.28),r=rnd(40,310);animal("crab",Math.cos(a)*r,Math.sin(a)*r)}
-
-/* ---------- BUILDING ---------- */
-function build(type){
- const cost={fire:{wood:5,stone:3},shelter:{wood:12,stone:8},storage:{wood:10,stone:4}}[type];
- if(save.wood<(cost.wood||0)||save.stone<(cost.stone||0)){toast("❌ Resource kurang");return}
- save.wood-=cost.wood;save.stone-=cost.stone;
- const g=new T.Group();g.position.copy(player.position);g.position.y=0;
- if(type==="fire"){
-   const base=cyl(.9,.3,0x4b3a2b,10);base.position.y=.15;g.add(base);
-   for(let i=0;i<3;i++){let f=new T.Mesh(new T.ConeGeometry(.28,1.4,7),new T.MeshStandardMaterial({color:0xff7a21,emissive:0xff3300,emissiveIntensity:1.5}));f.position.y=1;f.rotation.z=rnd(-.25,.25);g.add(f)}
-   g.userData={type:"campfire"};save.campfires++;
- }else if(type==="shelter"){
-   const floor=box(5,.25,4,0x69482e);floor.position.y=.15;g.add(floor);
-   for(const [x,z] of [[-2,-1.5],[2,-1.5],[-2,1.5],[2,1.5]]){let p=box(.25,3,.25,0x6d492b);p.position.set(x,1.5,z);g.add(p)}
-   const roof=new T.Mesh(new T.ConeGeometry(3.3,3.1,4),mat(0x4d3324));roof.rotation.y=Math.PI/4;roof.position.y=3.5;g.add(roof);
-   g.userData={type:"shelter"};save.shelters++;
- }else{
-   const c=box(2.5,1.8,1.6,0x6d482b);c.position.y=.9;g.add(c);
-   const lid=box(2.6,.2,1.7,0x9b6a3b);lid.position.y=1.85;g.add(lid);g.userData={type:"storage"};save.storages++;
- }
- scene.add(g);buildings.push(g);toast(type==="fire"?"🔥 Campfire dibuat":type==="shelter"?"🏕 Shelter dibuat":"📦 Storage dibuat");saveGame();checkAchievements();
+try {
+    renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias:false,
+        powerPreference:"high-performance",
+        alpha:false
+    });
+} catch(e) {
+    document.body.innerHTML = `
+    <div style="
+    position:fixed;inset:0;
+    background:#071923;color:white;
+    display:flex;align-items:center;
+    justify-content:center;
+    font:20px Arial;text-align:center">
+    HP tidak mendukung WebGL.
+    </div>`;
+    return;
 }
 
-/* ---------- INPUT: CLEAN CAMERA SYSTEM ---------- */
-let moveX=0,moveY=0,running=false,jumpV=0;
-let yaw=0,pitch=-.18;
-let camPointer=null, joyPointer=null;
-const joy=document.getElementById("joy"),stick=document.getElementById("stick");
-function isUI(e){return e.target.closest("button,#joy,#panelWrap,#buildMenu,#menu,#end")}
-joy.addEventListener("pointerdown",e=>{e.preventDefault();e.stopPropagation();joyPointer=e.pointerId;joy.setPointerCapture(e.pointerId);updateJoy(e)},true);
-joy.addEventListener("pointermove",e=>{if(e.pointerId===joyPointer){e.preventDefault();updateJoy(e)}},true);
-function updateJoy(e){const r=joy.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy,m=Math.hypot(dx,dy),lim=r.width*.36;if(m>lim){dx=dx/m*lim;dy=dy/m*lim}moveX=dx/lim;moveY=dy/lim;stick.style.transform=`translate(${dx}px,${dy}px)`}
-function clearJoy(e){if(e.pointerId===joyPointer){joyPointer=null;moveX=moveY=0;stick.style.transform="translate(0,0)"}}
-joy.addEventListener("pointerup",clearJoy,true);joy.addEventListener("pointercancel",clearJoy,true);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setSize(innerWidth, innerHeight, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-document.addEventListener("pointerdown",e=>{
- if(e.pointerType==="mouse"||isUI(e))return;
- if(e.clientX<innerWidth*.43)return;
- camPointer={id:e.pointerId,x:e.clientX,y:e.clientY};
-},true);
-document.addEventListener("pointermove",e=>{
- if(!camPointer||e.pointerId!==camPointer.id)return;
- const dx=e.clientX-camPointer.x,dy=e.clientY-camPointer.y;
- yaw-=dx*settings.sensitivity;
- pitch-=((settings.invertY?-dy:dy)*settings.sensitivity);
- pitch=clamp(pitch,-1.05,.42);
- camPointer.x=e.clientX;camPointer.y=e.clientY;
-},true);
-document.addEventListener("pointerup",e=>{if(camPointer&&e.pointerId===camPointer.id)camPointer=null},true);
-document.addEventListener("pointercancel",e=>{if(camPointer&&e.pointerId===camPointer.id)camPointer=null},true);
+/* =========================
+   SCENE
+========================= */
 
-document.getElementById("run").onpointerdown=e=>{e.preventDefault();running=true};document.getElementById("run").onpointerup=()=>running=false;document.getElementById("run").onpointercancel=()=>running=false;
-document.getElementById("jump").onclick=()=>{if(player.position.y<.05){jumpV=5;vibrate(25)}};
-document.getElementById("action").onclick=()=>gather();
-document.getElementById("attack").onclick=()=>attack();
-document.getElementById("build").onclick=()=>bm.style.display="grid";
-document.getElementById("fish").onclick=()=>fish();
+const scene = new THREE.Scene();
 
-bm.querySelectorAll("[data-build]").forEach(b=>b.onclick=()=>{
- const t=b.dataset.build;if(t==="close"){bm.style.display="none";return}
- if(t==="cookFish"||t==="cookMeat"){cook(t==="cookFish"?"fish":"meat");return}
- build(t);
+scene.background = new THREE.Color(0x79c9e8);
+scene.fog = new THREE.Fog(0x79c9e8, 90, 240);
+
+const camera = new THREE.PerspectiveCamera(
+    62,
+    innerWidth / innerHeight,
+    0.1,
+    350
+);
+
+camera.position.set(0, 8, 16);
+
+/* =========================
+   LIGHT
+========================= */
+
+const hemi = new THREE.HemisphereLight(
+    0xbfeaff,
+    0x385027,
+    2.2
+);
+
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(
+    0xffffff,
+    3
+);
+
+sun.position.set(50,100,30);
+scene.add(sun);
+
+/* =========================
+   OCEAN
+========================= */
+
+const oceanGeo = new THREE.CircleGeometry(CFG.water, 96);
+
+const oceanMat = new THREE.MeshPhongMaterial({
+    color:0x167fa0,
+    shininess:100,
+    transparent:true,
+    opacity:.92
 });
-function nearestResource(){
- let n=null,d=3.2;for(const o of objects){if(!o.visible||!o.userData.resource)continue;let q=dist(player.position,o.position);if(q<d){d=q;n=o}}return n;
-}
-function gather(){
- const n=nearestResource();
- if(n){
-  const r=n.userData.resource;save[r]=(save[r]||0)+1;n.visible=false;
-  toast(r==="wood"?"🪵 Wood +1":r==="stone"?"🪨 Stone +1":r==="berries"?"🫐 Berries +1":"💎 Crystal +1");
-  if(r==="wood")save.quest=Math.max(save.quest,1);
-  saveGame();checkAchievements();vibrate(18);return;
- }
- toast("Tidak ada resource dekat");
-}
-function attack(){
- let n=null,d=3.3;for(const a of animals){if(!a.visible)continue;let q=dist(player.position,a.position);if(q<d){d=q;n=a}}
- if(!n){toast("Tidak ada hewan di dekatmu");return}
- n.userData.hp-=10;if(settings.damageNumbers){const s=textSprite("-10","#ff7777");s.position.copy(n.position);s.position.y=2;scene.add(s);setTimeout(()=>scene.remove(s),500)}
- shake(.12);sfx(160,.08);vibrate(30);
- if(n.userData.hp<=0){n.visible=false;save.kills++;save.meat++;toast("🐗 Hewan dikalahkan • Meat +1");saveGame();checkAchievements()}
- else toast("💥 Serangan mengenai!");
-}
-function fish(){
- const r=Math.hypot(player.position.x,player.position.z);
- if(r<255){toast("🌊 Dekati pantai untuk memancing");return}
- if(save.stone<0)return;
- const chance=Math.random();
- if(chance<.12){save.fish++;save.fishCaught++;toast("🎣 Rare fish! +1");}
- else if(chance<.72){save.fish++;save.fishCaught++;toast("🎣 Fish +1")}
- else toast("🎣 Ikan kabur!");
- save.quest=Math.max(save.quest,2);saveGame();checkAchievements();vibrate(35);sfx(240,.1);
-}
-function cook(type){
- if(save.campfires<1){toast("🔥 Buat Campfire dulu");return}
- if(type==="fish"&&save.fish>0){save.fish--;save.cookedFish++;save.hunger=clamp(save.hunger+28,0,100);toast("🍳 Cooked Fish +1")}
- else if(type==="meat"&&save.meat>0){save.meat--;save.cookedMeat++;save.hunger=clamp(save.hunger+35,0,100);toast("🥩 Cooked Meat +1")}
- else {toast("Bahan makanan tidak ada");return}
- saveGame();checkAchievements();
+
+const ocean = new THREE.Mesh(
+    oceanGeo,
+    oceanMat
+);
+
+ocean.rotation.x = -Math.PI / 2;
+ocean.position.y = -0.8;
+
+scene.add(ocean);
+
+/* =========================
+   ISLAND
+========================= */
+
+const islandGeo = new THREE.CylinderGeometry(
+    CFG.island,
+    CFG.island + 12,
+    4,
+    96
+);
+
+const islandMat = new THREE.MeshLambertMaterial({
+    color:0x3f9b48
+});
+
+const island = new THREE.Mesh(
+    islandGeo,
+    islandMat
+);
+
+island.position.y = -1;
+scene.add(island);
+
+/* =========================
+   BEACH
+========================= */
+
+const beachGeo = new THREE.CylinderGeometry(
+    CFG.island + 3,
+    CFG.island + 5,
+    .8,
+    96
+);
+
+const beachMat = new THREE.MeshLambertMaterial({
+    color:0xe3c47b
+});
+
+const beach = new THREE.Mesh(
+    beachGeo,
+    beachMat
+);
+
+beach.position.y = .15;
+scene.add(beach);
+
+/* =========================
+   TERRAIN CENTER
+========================= */
+
+const landGeo = new THREE.CylinderGeometry(
+    CFG.island - 4,
+    CFG.island,
+    1.8,
+    96
+);
+
+const landMat = new THREE.MeshLambertMaterial({
+    color:0x4eac4c
+});
+
+const land = new THREE.Mesh(
+    landGeo,
+    landMat
+);
+
+land.position.y = .5;
+scene.add(land);
+
+/* =========================
+   OBJECT ARRAYS
+========================= */
+
+const trees = [];
+const rocks = [];
+const bushes = [];
+const animals = [];
+const resources = [];
+const buildings = [];
+
+/* =========================
+   RANDOM POSITION
+========================= */
+
+function randomIslandPos(min = 8, max = CFG.island - 7) {
+
+    const a = Math.random() * Math.PI * 2;
+    const r = min + Math.sqrt(Math.random()) * (max-min);
+
+    return {
+        x:Math.cos(a)*r,
+        z:Math.sin(a)*r
+    };
 }
 
-/* ---------- QUEST / ACHIEVEMENTS ---------- */
-const quests=[
-["CHAPTER 1 — SURVIVE","Kumpulkan Wood dan Stone."],
-["CHAPTER 1 — SURVIVE","Buat Campfire."],
-["CHAPTER 2 — SHELTER","Bangun Shelter dan bertahan malam."],
-["CHAPTER 3 — RUINS","Temukan reruntuhan kuno."],
-["CHAPTER 3 — MYSTERY","Ambil Crystal di dekat ruins."],
-["CHAPTER 4 — SIGNAL","Bangun Campfire, lalu siapkan sinyal."],
-["CHAPTER 4 — SIGNAL","Aktifkan Beacon di reruntuhan."],
-["CHAPTER 5 — RESCUE","Pulau bebas dijelajahi. Cari jalan pulang."]
-];
-function questText(){
- let q=save.quest||0;
- if(q===0&&save.wood>=5&&save.stone>=3)save.quest=1;
- if(q===1&&save.campfires>0)save.quest=2;
- if(q===2&&save.shelters>0&&save.days>=1)save.quest=3;
- if(q===3&&dist(player.position,ruins.position)<8)save.quest=4;
- if(q===4&&save.crystal>0)save.quest=5;
- if(q===5&&save.campfires>0&&save.shelters>0)save.quest=6;
- if(q===6&&save.beacon)save.quest=7;
- save.chapter=save.quest<2?1:save.quest<3?2:save.quest<5?3:save.quest<7?4:5;
- return quests[save.quest]||quests[7];
-}
-function unlock(name,desc){save.achievements=save.achievements||[];if(save.achievements.includes(name))return;save.achievements.push(name);toast("🏆 "+name);saveGame()}
-function checkAchievements(){
- if(save.wood>0)unlock("FIRST WOOD","Gather your first wood");
- if(save.fishCaught>0)unlock("FISHERMAN","Catch a fish");
- if(save.campfires>0)unlock("FIRE KEEPER","Build a campfire");
- if(save.shelters>0)unlock("HOME","Build a shelter");
- if(save.crystal>0)unlock("ANCIENT LIGHT","Find the crystal");
- if(save.kills>=3)unlock("HUNTER","Defeat 3 animals");
- if(save.days>=5)unlock("ISLAND LEGEND","Survive five days");
- if(save.ended)unlock("RESCUED","Activate the rescue ending");
+/* =========================
+   TREE
+========================= */
+
+function createTree(x,z) {
+
+    const g = new THREE.Group();
+
+    const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(.45,.65,5,8),
+        new THREE.MeshLambertMaterial({
+            color:0x754625
+        })
+    );
+
+    trunk.position.y = 3;
+    g.add(trunk);
+
+    const crown = new THREE.Group();
+
+    for(let i=0;i<7;i++) {
+
+        const leaf = new THREE.Mesh(
+            new THREE.ConeGeometry(
+                .65,
+                4.2,
+                7
+            ),
+            new THREE.MeshLambertMaterial({
+                color:0x14752e
+            })
+        );
+
+        const a = i / 7 * Math.PI * 2;
+
+        leaf.position.set(
+            Math.cos(a)*1.4,
+            5.8,
+            Math.sin(a)*1.4
+        );
+
+        leaf.rotation.z =
+            Math.cos(a)*.45;
+
+        leaf.rotation.x =
+            Math.sin(a)*.45;
+
+        crown.add(leaf);
+    }
+
+    g.add(crown);
+
+    g.position.set(x,0,z);
+
+    g.userData.type = "tree";
+    g.userData.hp = 3;
+    g.userData.resource = "wood";
+
+    scene.add(g);
+    trees.push(g);
+    resources.push(g);
 }
 
-/* ---------- BEACON ---------- */
-const beacon=new T.Group();beacon.position.set(-210,0,-175);
-const bbase=cyl(1.2,.4,0x343434,10);bbase.position.y=.2;beacon.add(bbase);
-const pole=cyl(.12,5,0x55585c,8);pole.position.y=2.5;beacon.add(pole);
-const lamp=new T.Mesh(new T.SphereGeometry(.45,12,8),new T.MeshStandardMaterial({color:0x8ffaff,emissive:0x3aefff,emissiveIntensity:4}));lamp.position.y=5;beacon.add(lamp);
-beacon.visible=false;scene.add(beacon);
-function activateBeacon(){
- if(save.quest<6){toast("📡 Belum siap. Selesaikan quest.");return}
- if(dist(player.position,beacon.position)>5){toast("📡 Dekati beacon di ruins");return}
- save.beacon=true;save.ended=true;beacon.visible=true;end.style.display="grid";saveGame();checkAchievements();sfx(620,.4);
-}
-const beaconBtn=document.createElement("button");beaconBtn.className="ctrl";beaconBtn.textContent="📡";beaconBtn.style.cssText="right:20px;bottom:180px;width:55px;height:55px;display:none;position:absolute;pointer-events:auto";hud.appendChild(beaconBtn);beaconBtn.onclick=activateBeacon;
+/* =========================
+   ROCK
+========================= */
 
-/* ---------- DAY / NIGHT / WEATHER ---------- */
-let weather="clear",weatherTimer=35,shakePower=0;
-const weatherEl=document.getElementById("weather");
-const rainGeo=new T.BufferGeometry(), rainPos=new Float32Array(500*3);
-for(let i=0;i<500;i++){rainPos[i*3]=rnd(-320,320);rainPos[i*3+1]=rnd(2,55);rainPos[i*3+2]=rnd(-320,320)}
-rainGeo.setAttribute("position",new T.BufferAttribute(rainPos,3));
-const rainMat=new T.PointsMaterial({color:0xbdeaff,size:.13,transparent:true,opacity:.8});
-const rainPts=new T.Points(rainGeo,rainMat);rainPts.visible=false;scene.add(rainPts);
-function setWeather(w){weather=w;rainPts.visible=w==="rain"||w==="storm";weatherEl.style.display=rainPts.visible?"block":"none";if(w==="storm")toast("⛈ Badai datang!");}
-function updateWeather(dt){
- weatherTimer-=dt;if(weatherTimer<=0){weatherTimer=rnd(45,85);setWeather(pick(["clear","clear","cloud","rain","storm"]))}
- if(rainPts.visible){const p=rainGeo.attributes.position;for(let i=0;i<500;i++){let y=p.getY(i)-dt*18;if(y<0)y=rnd(25,35);p.setY(i,y)}p.needsUpdate=true}
-}
+function createRock(x,z) {
 
-/* ---------- AUDIO ---------- */
-let audioCtx=null;
-function sfx(freq,dur=.08){
- if(settings.mute||settings.sfx<=0)return;
- try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==="suspended")audioCtx.resume();
- const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=freq;o.type="sine";g.gain.value=(settings.sfx/100)*.025;o.connect(g);g.connect(audioCtx.destination);o.start();g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+dur);o.stop(audioCtx.currentTime+dur)}catch(_){}
-}
-document.addEventListener("pointerdown",()=>{try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume()}catch(_){}} ,{once:true});
+    const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(
+            .8 + Math.random()*.7,
+            0
+        ),
+        new THREE.MeshLambertMaterial({
+            color:0x777b78
+        })
+    );
 
-/* ---------- CAMERA / MOVEMENT ---------- */
-function shake(v){if(settings.cameraShake)shakePower=Math.max(shakePower,v)}
-function updatePlayer(dt){
- let len=Math.hypot(moveX,moveY);if(len>.05){
-   const sp=(running?6:3.2);
-   const fx=-Math.sin(yaw),fz=-Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
-   player.position.x+=(rx*moveX+fx*(-moveY))*sp*dt;
-   player.position.z+=(rz*moveX+fz*(-moveY))*sp*dt;
-   const vx=rx*moveX+fx*(-moveY),vz=rz*moveX+fz*(-moveY);player.rotation.y=Math.atan2(vx,vz);
-   save.stamina=clamp(save.stamina-(running?12:4)*dt,0,100);
- }else save.stamina=clamp(save.stamina+16*dt,0,100);
- if(running&&save.stamina<3)running=false;
- jumpV-=13*dt;player.position.y+=jumpV*dt;if(player.position.y<0){player.position.y=0;jumpV=0}
- const r=Math.hypot(player.position.x,player.position.z);if(r>335){player.position.x*=335/r;player.position.z*=335/r}
- save.x=player.position.x;save.z=player.position.z;
-}
-function updateCamera(dt){
- const target=new T.Vector3(player.position.x,player.position.y+1.4,player.position.z);
- const horiz=11,vert=3.2;
- const cp=Math.cos(pitch),sp=Math.sin(pitch);
- const off=new T.Vector3(Math.sin(yaw)*cp*horiz, -sp*vert+2.2, Math.cos(yaw)*cp*horiz);
- const desired=target.clone().add(off);
- camera.position.lerp(desired,1-Math.pow(.001,dt));
- camera.lookAt(target);
- if(shakePower>0){camera.position.x+=rnd(-shakePower,shakePower);camera.position.y+=rnd(-shakePower,shakePower);shakePower*=Math.pow(.02,dt)}
+    rock.position.set(x,.8,z);
+
+    rock.scale.y = .7;
+
+    rock.userData.type = "rock";
+    rock.userData.hp = 2;
+    rock.userData.resource = "stone";
+
+    scene.add(rock);
+    rocks.push(rock);
+    resources.push(rock);
 }
 
-/* ---------- SURVIVAL ---------- */
-let autosave=0;
-function survival(dt){
- save.hunger=clamp(save.hunger-dt*.55,0,100);
- save.thirst=clamp(save.thirst-dt*.8,0,100);
- if(save.hunger<=0||save.thirst<=0)save.health=clamp(save.health-dt*2,0,100);
- if(save.health<=0){save.health=55;save.hunger=35;save.thirst=35;player.position.set(0,0,5);toast("☠ Kamu pingsan dan kembali ke pantai");}
- if(save.time===undefined)save.time=8;
- save.time+=dt*.08;
- if(save.time>=24){save.time-=24;save.days++;checkAchievements();toast("🌅 Hari baru: "+(save.days+1))}
- const night=save.time<6||save.time>18;
- sun.intensity=night?.28:2.1;
- scene.background.set(night?0x07152c:weather==="storm"?0x526a76:weather==="cloud"?0x79a3aa:0x78c9e8);
- scene.fog.color.copy(scene.background);
- if(dist(player.position,ruins.position)<8){save.health=clamp(save.health-dt*.8,0,100);document.getElementById("danger").style.borderWidth="10px"}else document.getElementById("danger").style.borderWidth="0";
- if(settings.autoPickup){const n=nearestResource();if(n&&dist(player.position,n.position)<1.65)gather()}
- autosave+=dt;if(autosave>8){autosave=0;saveGame()}
+/* =========================
+   BERRY
+========================= */
+
+function createBush(x,z) {
+
+    const g = new THREE.Group();
+
+    const bush = new THREE.Mesh(
+        new THREE.SphereGeometry(1.1,10,8),
+        new THREE.MeshLambertMaterial({
+            color:0x207e36
+        })
+    );
+
+    bush.position.y = 1;
+    g.add(bush);
+
+    for(let i=0;i<5;i++) {
+
+        const berry = new THREE.Mesh(
+            new THREE.SphereGeometry(.12,6,6),
+            new THREE.MeshLambertMaterial({
+                color:0xd92f45
+            })
+        );
+
+        berry.position.set(
+            (Math.random()-.5)*1.5,
+            .8+Math.random()*.7,
+            (Math.random()-.5)*1.5
+        );
+
+        g.add(berry);
+    }
+
+    g.position.set(x,0,z);
+
+    g.userData.type = "berry";
+    g.userData.resource = "berry";
+
+    scene.add(g);
+    bushes.push(g);
+    resources.push(g);
 }
 
-/* ---------- WORLD ANIMATION ---------- */
-let elapsed=0;
-function animateWorld(dt){
- elapsed+=dt;
- objects.forEach(o=>{
-   if(o.userData.type==="palm")o.rotation.z=Math.sin(elapsed*1.1+o.userData.phase)*.025;
-   if(o.userData.type==="crystal")o.rotation.y+=dt*1.5;
- });
- buildings.forEach(g=>{if(g.userData.type==="campfire")g.children.slice(1).forEach((f,i)=>f.scale.y=1+Math.sin(elapsed*8+i)*.15)});
- animals.forEach(a=>{
-   if(!a.visible)return;
-   if(elapsed>a.userData.next){a.userData.next=elapsed+rnd(1,4);a.userData.dir+=rnd(-1,1)}
-   a.position.x+=Math.sin(a.userData.dir)*a.userData.speed*dt;a.position.z+=Math.cos(a.userData.dir)*a.userData.speed*dt;
-   if(!insideIsland(a.position.x,a.position.z)){a.userData.dir+=Math.PI}
-   if(a.userData.type==="boar"&&dist(a.position,player.position)<5){a.userData.dir=Math.atan2(player.position.x-a.position.x,player.position.z-a.position.z);if(dist(a.position,player.position)<1.7){save.health=clamp(save.health-dt*7,0,100);shake(.04)}}
- });
+/* =========================
+   ANIMAL
+========================= */
+
+function createAnimal(x,z) {
+
+    const g = new THREE.Group();
+
+    const body = new THREE.Mesh(
+        new THREE.SphereGeometry(
+            1.15,
+            12,
+            8
+        ),
+        new THREE.MeshLambertMaterial({
+            color:0x71462c
+        })
+    );
+
+    body.scale.set(1.4,.8,.9);
+    body.position.y = 1.25;
+    g.add(body);
+
+    const head = new THREE.Mesh(
+        new THREE.SphereGeometry(.65,10,8),
+        new THREE.MeshLambertMaterial({
+            color:0x5d3926
+        })
+    );
+
+    head.position.set(1.1,1.5,0);
+    g.add(head);
+
+    for(let i=0;i<4;i++) {
+
+        const leg = new THREE.Mesh(
+            new THREE.CylinderGeometry(
+                .13,.16,.9,6
+            ),
+            new THREE.MeshLambertMaterial({
+                color:0x3d291d
+            })
+        );
+
+        leg.position.set(
+            i<2 ? .7:-.7,
+            .6,
+            i%2 ? -.45:.45
+        );
+
+        g.add(leg);
+    }
+
+    g.position.set(x,0,z);
+
+    g.userData.type = "animal";
+    g.userData.hp = 30;
+    g.userData.speed = .7 + Math.random()*.5;
+
+    scene.add(g);
+    animals.push(g);
 }
 
-/* ---------- MINIMAP ---------- */
-const mc=document.getElementById("map"),mx=mc.getContext("2d");
-function minimap(){
- mx.clearRect(0,0,290,290);mx.fillStyle="#0a313b";mx.beginPath();mx.arc(145,145,135,0,Math.PI*2);mx.fill();
- mx.fillStyle="#6c9d4a";mx.beginPath();mx.ellipse(145,145,112,122,0,0,Math.PI*2);mx.fill();
- mx.fillStyle="#8a7661";mx.fillRect(75,75,30,20);
- mx.fillStyle="#6ff";const px=145+player.position.x*.34,pz=145+player.position.z*.34;mx.beginPath();mx.arc(px,pz,6,0,7);mx.fill();
- mx.fillStyle="#f7d45a";const rx=145+ruins.position.x*.34,rz=145+ruins.position.z*.34;mx.beginPath();mx.arc(rx,rz,5,0,7);mx.fill();
- mx.fillStyle="#f66";animals.forEach(a=>{if(a.visible){mx.beginPath();mx.arc(145+a.position.x*.34,145+a.position.z*.34,3,0,7);mx.fill()}});
+/* =========================
+   GENERATE WORLD
+========================= */
+
+for(let i=0;i<CFG.maxTrees;i++) {
+
+    const p = randomIslandPos(12,72);
+
+    createTree(p.x,p.z);
 }
 
-/* ---------- HUD ---------- */
-function updateHUD(){
- const q=questText();document.querySelector("#quest").innerHTML=`<b>📜 ${q[0]}</b><br><span style="font-size:13px">${q[1]}</span>`;
- const pct=(id,v)=>document.querySelector(id+" i").style.width=clamp(v,0,100)+"%";
- pct("#hp",save.health);pct("#food",save.hunger);pct("#water",save.thirst);pct("#stam",save.stamina);
- const h=Math.floor(save.time),m=Math.floor((save.time-h)*60);
- document.getElementById("day").textContent=`${h>=6&&h<18?"☀️":"🌙"} Day ${save.days+1} • ${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
- document.getElementById("inv").textContent=`🪵 ${save.wood}  🪨 ${save.stone}  🥥 ${save.coconut}  🫐 ${save.berries}  🎣 ${save.fish}  🍳 ${save.cookedFish}  🥩 ${save.meat}  💎 ${save.crystal}`;
- const nearBeacon=dist(player.position,beacon.position)<6;beaconBtn.style.display=nearBeacon?"block":"none";
-}
-setInterval(updateHUD,250);setInterval(minimap,100);
+for(let i=0;i<CFG.maxRocks;i++) {
 
-/* ---------- APINATOR MULTIPLAYER ---------- */
-const APINATOR_KEY="app_8eadf18bc5b4e71dd4df3ce3cf23da64a7e87578";
-const APINATOR_CLUSTER="us";
-const MP_AUTH_KEY="VALEN_MP_AUTH_URL";
-const MP_ROOM_KEY="VALEN_MP_ROOM";
-const MP_NAME_KEY="VALEN_MP_NAME";
-const MP_DEFAULT_ROOM=localStorage.getItem(MP_ROOM_KEY)||"main";
-const MP={client:null,channel:null,connected:false,id:localStorage.getItem("VALEN_MP_ID")||crypto.randomUUID(),remote:new Map(),lastSend:0,room:MP_DEFAULT_ROOM,name:localStorage.getItem(MP_NAME_KEY)||("Survivor-"+Math.floor(100+Math.random()*900)),auth:localStorage.getItem(MP_AUTH_KEY)||"",starting:false};
-function mpSetStatus(text,ok=false){mpStatus.textContent=(ok?"🟢 ":"🟡 ")+text;mpStatus.style.borderColor=ok?"#2ee78a66":"#ffffff20"}
-function mpData(v){if(typeof v!=="string")return v;try{return JSON.parse(v)}catch(_){return null}}
-function mpColor(id){let n=0;for(let i=0;i<id.length;i++)n=(n*31+id.charCodeAt(i))>>>0;return [0x36a3ff,0xff6b8a,0xffc857,0x67e8a5,0xc084fc,0x22d3ee][n%6]}
-function makeRemote(id,name,color){
-  if(MP.remote.has(id))return MP.remote.get(id);
-  const g=new T.Group();
-  const b=cyl(.55,1.35,color||mpColor(id),10);b.position.y=1;g.add(b);
-  const h=new T.Mesh(new T.SphereGeometry(.5,12,10),mat(0xf0b27a));h.position.y=2.05;g.add(h);
-  const label=textSprite(name||"Player","#ffffff",34);label.position.y=3.05;label.scale.set(2.7,.7,1);g.add(label);
-  g.position.set(0,0,0);g.userData={id,name:name||"Player",target:new T.Vector3(),targetY:0,lastSeen:performance.now()};scene.add(g);MP.remote.set(id,g);return g;
-}
-function removeRemote(id){const g=MP.remote.get(id);if(!g)return;scene.remove(g);MP.remote.delete(id)}
-function applyRemote(id,d){if(!d||id===MP.id)return;const g=makeRemote(id,d.name,d.color);g.userData.target.set(Number(d.x)||0,0,Number(d.z)||0);g.userData.targetY=Number(d.ry)||0;g.userData.lastSeen=performance.now()}
-function clearRemotes(){for(const id of MP.remote.keys())removeRemote(id)}
-function mpRoster(){mpList.textContent="Players: "+(MP.remote.size+1);}
-function mpBind(channel){
-  MP.channel=channel;
-  channel.bind("client-move",(data,meta)=>{
-    const d=mpData(data)||{};const id=meta?.sender_id||meta?.user_id||d.id;if(id)applyRemote(id,d);
-  });
-  channel.bind("realtime:subscription_succeeded",members=>{
-    try{
-      if(members&&typeof members.each==="function")members.each(m=>{if(m.id!==MP.id)makeRemote(m.id,m.info?.name||"Player",m.info?.color)})
-      else if(members?.members)Object.entries(members.members).forEach(([id,m])=>{if(id!==MP.id)makeRemote(id,m.info?.name||"Player",m.info?.color)})
-    }catch(_){} mpRoster();mpSetStatus("ONLINE • "+MP.room,true);
-  });
-  channel.bind("realtime:member_added",m=>{if(m?.id!==MP.id){makeRemote(m.id,m.info?.name||"Player",m.info?.color);mpRoster();}});
-  channel.bind("realtime:member_removed",m=>{if(m?.id){removeRemote(m.id);mpRoster();}});
-  channel.bind("realtime:subscription_error",()=>mpSetStatus("AUTH ERROR"));
-}
-async function connectMultiplayer(){
-  if(MP.starting||MP.connected)return;
-  MP.starting=true;mpSetStatus("CONNECTING...");
-  try{
-    if(!MP.auth){throw new Error("NO_AUTH_URL")}
-    let mod=null;
-    if(window.Apinator)mod={Apinator:window.Apinator};
-    else mod=await import("https://esm.sh/@apinator/client");
-    const ApinatorCtor=mod.Apinator||mod.default?.Apinator||mod.default;
-    if(typeof ApinatorCtor!=="function")throw new Error("SDK_NOT_FOUND");
-    MP.client=new ApinatorCtor({appKey:APINATOR_KEY,cluster:APINATOR_CLUSTER,authEndpoint:MP.auth,authHeaders:{"X-Player-Id":MP.id,"X-Player-Name":MP.name,"X-Player-Color":String(mpColor(MP.id))},enableReconnect:true,maxReconnectAttempts:20});
-    MP.client.connect();
-    const ch=MP.client.subscribe("presence-valen-"+MP.room.replace(/[^a-zA-Z0-9_-]/g,"-"));
-    mpBind(ch);MP.connected=true;
-    setTimeout(()=>{if(MP.connected)mpSetStatus("ONLINE • "+MP.room,true)},1200);
-  }catch(e){
-    console.warn("Apinator multiplayer:",e);MP.connected=false;mpSetStatus("OFFLINE • SOLO");
-  }finally{MP.starting=false}
-}
-function disconnectMultiplayer(){try{MP.client?.disconnect()}catch(_){}MP.client=null;MP.channel=null;MP.connected=false;clearRemotes();mpRoster();mpSetStatus("OFFLINE • SOLO")}
-function sendMP(){
-  if(!MP.connected||!MP.channel||performance.now()-MP.lastSend<70)return;
-  MP.lastSend=performance.now();
-  try{MP.channel.trigger("client-move",{id:MP.id||"",name:MP.name,x:+player.position.x.toFixed(2),z:+player.position.z.toFixed(2),ry:+player.rotation.y.toFixed(3),color:mpColor(MP.name)})}catch(e){console.warn(e)}
-}
-function animateRemote(dt){
-  const now=performance.now();
-  MP.remote.forEach((g,id)=>{
-    const age=now-g.userData.lastSeen;
-    if(age>10000){removeRemote(id);return}
-    g.position.lerp(g.userData.target,Math.min(1,dt*10));
-    g.rotation.y+=((g.userData.targetY-g.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
-  });mpRoster();
-}
-/* ---------- SETTINGS ---------- */
-function renderSettings(){
- const c=document.getElementById("settingsContent");
- c.innerHTML=`
- <div class="row">Language <select id="sLang"><option value="id">Indonesia</option><option value="en">English</option></select></div>
- <div class="row">Sensitivity <input id="sSens" type="range" min=".001" max=".015" step=".001" value="${settings.sensitivity}"></div>
- <div class="row">Invert Y <input id="sInv" type="checkbox" ${settings.invertY?"checked":""}></div>
- <div class="row">Joystick Size <input id="sJoy" type="range" min=".7" max="1.5" step=".05" value="${settings.joystickSize}"></div>
- <div class="row">Button Size <input id="sBtn" type="range" min=".7" max="1.5" step=".05" value="${settings.buttonSize}"></div>
- <div class="row">Auto Pickup <input id="sAuto" type="checkbox" ${settings.autoPickup?"checked":""}></div>
- <div class="row">Camera Shake <input id="sShake" type="checkbox" ${settings.cameraShake?"checked":""}></div>
- <div class="row">Damage Numbers <input id="sDmg" type="checkbox" ${settings.damageNumbers?"checked":""}></div>
- <div class="row">View Distance <input id="sView" type="range" min="50" max="180" step="10" value="${settings.viewDistance}"></div>
- <div class="row">Graphics <select id="sQ"><option>Low</option><option>Medium</option><option>High</option></select></div>
- <div class="row">Shadows <input id="sShadow" type="checkbox" ${settings.shadows?"checked":""}></div>
- <div class="row">Master <input id="sMaster" type="range" min="0" max="100" value="${settings.master}"></div>
- <div class="row">SFX <input id="sSfx" type="range" min="0" max="100" value="${settings.sfx}"></div>
- <div class="row">Ambient <input id="sAmb" type="range" min="0" max="100" value="${settings.ambient}"></div>
- <div class="row">Mute <input id="sMute" type="checkbox" ${settings.mute?"checked":""}></div>
- <div class="row">MP Auth URL <input id="sMpAuth" type="text" value="${MP.auth.replace(/&/g,"&amp;").replace(/"/g,"&quot;")}" placeholder="https://server.com/auth/channel" style="width:55%"></div>
- <div class="row">MP Room <input id="sMpRoom" type="text" value="${MP.room}" maxlength="24" style="width:55%"></div>
- <div class="row">Player Name <input id="sMpName" type="text" value="${MP.name}" maxlength="20" style="width:55%"></div>
- <div class="panelBtns"><button id="mpConnect">🟢 Connect Multiplayer</button><button id="mpDisconnect">⚪ Solo Mode</button><button id="eat">🍳 Eat Cooked Fish</button><button id="drink">🥥 Drink Coconut</button><button id="saveBtn">💾 Save</button><button id="resetBtn">♻ Reset Save</button></div>`;
- c.querySelector("#sLang").value=settings.language;c.querySelector("#sQ").value=settings.quality;
- const bind=(id,key,type="value")=>c.querySelector(id).addEventListener(type==="checked"?"change":"input",e=>{settings[key]=type==="checked"?e.target.checked:Number(e.target.value);if(type==="value"&&key==="sensitivity")settings[key]=Number(e.target.value);applySettings();saveGame()});
- bind("#sSens","sensitivity");bind("#sInv","invertY","checked");bind("#sJoy","joystickSize");bind("#sBtn","buttonSize");bind("#sAuto","autoPickup","checked");bind("#sShake","cameraShake","checked");bind("#sDmg","damageNumbers","checked");bind("#sView","viewDistance");bind("#sShadow","shadows","checked");bind("#sMaster","master");bind("#sSfx","sfx");bind("#sAmb","ambient");bind("#sMute","mute","checked");
- c.querySelector("#sMpAuth").onchange=e=>{MP.auth=e.target.value.trim();localStorage.setItem(MP_AUTH_KEY,MP.auth)};
- c.querySelector("#sMpRoom").onchange=e=>{MP.room=(e.target.value.trim()||"main").slice(0,24);localStorage.setItem(MP_ROOM_KEY,MP.room)};
- c.querySelector("#sMpName").onchange=e=>{MP.name=(e.target.value.trim()||"Survivor").slice(0,20);localStorage.setItem(MP_NAME_KEY,MP.name)};
- c.querySelector("#mpConnect").onclick=()=>{MP.auth=c.querySelector("#sMpAuth").value.trim();MP.room=(c.querySelector("#sMpRoom").value.trim()||"main").slice(0,24);MP.name=(c.querySelector("#sMpName").value.trim()||"Survivor").slice(0,20);localStorage.setItem(MP_AUTH_KEY,MP.auth);localStorage.setItem(MP_ROOM_KEY,MP.room);localStorage.setItem(MP_NAME_KEY,MP.name);connectMultiplayer();toast("🌐 Menghubungkan multiplayer...")};
- c.querySelector("#mpDisconnect").onclick=()=>{disconnectMultiplayer();toast("🎮 Solo mode")};
- c.querySelector("#sQ").onchange=e=>{settings.quality=e.target.value;applySettings();saveGame()};c.querySelector("#sLang").onchange=e=>{settings.language=e.target.value;saveGame()};
- c.querySelector("#eat").onclick=()=>{if(save.cookedFish){save.cookedFish--;save.hunger=clamp(save.hunger+30,0,100);saveGame();toast("🍳 +30 Hunger");renderSettings()}};
- c.querySelector("#drink").onclick=()=>{if(save.coconut){save.coconut--;save.thirst=clamp(save.thirst+30,0,100);saveGame();toast("🥥 +30 Thirst");renderSettings()}};
- c.querySelector("#saveBtn").onclick=()=>{saveGame();toast("💾 Game saved")};
- c.querySelector("#resetBtn").onclick=()=>{if(confirm("Reset semua progress?")){localStorage.removeItem(KEY);location.reload()}};
-}
-function applySettings(){
- const ratio=Math.min(devicePixelRatio,settings.quality==="Low"?1:settings.quality==="Medium"?1.5:2);renderer.setPixelRatio(ratio);renderer.setSize(innerWidth,innerHeight,false);
- renderer.shadowMap.enabled=settings.shadows;camera.far=settings.viewDistance;camera.updateProjectionMatrix();scene.fog.far=settings.viewDistance;
- joy.style.transform=`scale(${settings.joystickSize})`;joy.style.transformOrigin="bottom left";
- document.querySelectorAll(".ctrl").forEach(b=>{if(b.id!=="settingsBtn")b.style.scale=settings.buttonSize});
-}
-document.getElementById("settingsBtn").onclick=()=>{renderSettings();wrap.style.display="grid"};
-document.getElementById("closePanel").onclick=()=>wrap.style.display="none";
-wrap.addEventListener("pointerdown",e=>{if(e.target===wrap)e.stopPropagation()});
+    const p = randomIslandPos(10,76);
 
-/* ---------- MENU / SAVE ---------- */
-document.getElementById("continue").onclick=()=>{menu.style.display="none";startAudio();};
-document.getElementById("newgame").onclick=()=>{if(confirm("Mulai game baru?")){localStorage.removeItem(KEY);location.reload()}};
-document.getElementById("freeRoam").onclick=()=>{end.style.display="none";save.ended=true;saveGame()};
-function startAudio(){try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume()}catch(_){}}
-let started=!!localStorage.getItem(KEY);
-if(!started){menu.style.display="grid"}else startAudio();
-
-/* ---------- LOOP ---------- */
-let last=performance.now(),fpsAcc=0,fpsFrames=0;
-function loop(now){
- requestAnimationFrame(loop);let dt=Math.min(.05,(now-last)/1000);last=now;
- updatePlayer(dt);updateCamera(dt);survival(dt);updateWeather(dt);animateWorld(dt);animateRemote(dt);sendMP();
- if(save.ended)beacon.visible=true;
- fpsAcc+=dt;fpsFrames++;
- renderer.render(scene,camera);
+    createRock(p.x,p.z);
 }
+
+for(let i=0;i<CFG.maxBushes;i++) {
+
+    const p = randomIslandPos(8,74);
+
+    createBush(p.x,p.z);
+}
+
+for(let i=0;i<CFG.maxAnimals;i++) {
+
+    const p = randomIslandPos(15,68);
+
+    createAnimal(p.x,p.z);
+}
+
+/* =========================
+   PLAYER
+========================= */
+
+const player = new THREE.Group();
+
+const playerBody = new THREE.Mesh(
+    new THREE.CapsuleGeometry(
+        .55,
+        1.25,
+        6,
+        10
+    ),
+    new THREE.MeshLambertMaterial({
+        color:0x2d73d5
+    })
+);
+
+playerBody.position.y = 1.3;
+player.add(playerBody);
+
+const head = new THREE.Mesh(
+    new THREE.SphereGeometry(.42,12,10),
+    new THREE.MeshLambertMaterial({
+        color:0xf0bd8d
+    })
+);
+
+head.position.y = 2.35;
+player.add(head);
+
+const backpack = new THREE.Mesh(
+    new THREE.BoxGeometry(.55,.7,.3),
+    new THREE.MeshLambertMaterial({
+        color:0x5a351f
+    })
+);
+
+backpack.position.set(0,1.35,-.55);
+player.add(backpack);
+
+player.position.set(
+    save.x || 0,
+    0,
+    save.z || 12
+);
+
+scene.add(player);
+
+/* =========================
+   PLAYER STATE
+========================= */
+
+let yaw = 0;
+let pitch = .35;
+
+let joyX = 0;
+let joyY = 0;
+
+let moving = false;
+let running = false;
+
+let lastTime = performance.now();
+
+/* =========================
+   UI
+========================= */
+
+const ui = document.createElement("div");
+
+ui.style.cssText = `
+position:fixed;
+inset:0;
+pointer-events:none;
+z-index:10;
+`;
+
+document.body.appendChild(ui);
+
+const hud = document.createElement("div");
+
+hud.style.cssText = `
+position:absolute;
+top:15px;
+left:15px;
+width:230px;
+padding:12px;
+border-radius:15px;
+background:rgba(0,0,0,.55);
+color:white;
+font-weight:bold;
+font-size:13px;
+`;
+
+hud.innerHTML = `
+<div style="font-size:18px;margin-bottom:7px">
+🏝️ VALEN ISLAND
+</div>
+
+<div id="stats"></div>
+
+<div id="resources"
+style="margin-top:8px;line-height:1.5"></div>
+`;
+
+ui.appendChild(hud);
+
+const stats = hud.querySelector("#stats");
+const resourcesUI = hud.querySelector("#resources");
+
+/* =========================
+   BUTTON
+========================= */
+
+function button(text, right, bottom, fn) {
+
+    const b = document.createElement("button");
+
+    b.textContent = text;
+
+    b.style.cssText = `
+    position:absolute;
+    right:${right}px;
+    bottom:${bottom}px;
+    width:70px;
+    height:70px;
+    border:2px solid rgba(255,255,255,.5);
+    border-radius:50%;
+    background:rgba(0,0,0,.48);
+    color:white;
+    font-size:24px;
+    pointer-events:auto;
+    touch-action:none;
+    `;
+
+    b.onpointerdown = e => {
+        e.preventDefault();
+        fn();
+    };
+
+    ui.appendChild(b);
+
+    return b;
+}
+
+/* =========================
+   JOYSTICK
+========================= */
+
+const joy = document.createElement("div");
+
+joy.style.cssText = `
+position:absolute;
+left:35px;
+bottom:35px;
+width:140px;
+height:140px;
+border-radius:50%;
+background:rgba(255,255,255,.15);
+border:2px solid rgba(255,255,255,.3);
+pointer-events:auto;
+touch-action:none;
+`;
+
+ui.appendChild(joy);
+
+const stick = document.createElement("div");
+
+stick.style.cssText = `
+position:absolute;
+left:40px;
+top:40px;
+width:60px;
+height:60px;
+border-radius:50%;
+background:rgba(255,255,255,.5);
+`;
+
+joy.appendChild(stick);
+
+let joyPointer = null;
+
+joy.onpointerdown = e => {
+
+    joyPointer = e.pointerId;
+
+    joy.setPointerCapture(e.pointerId);
+
+    updateJoy(e);
+};
+
+joy.onpointermove = e => {
+
+    if(e.pointerId !== joyPointer) return;
+
+    updateJoy(e);
+};
+
+joy.onpointerup =
+joy.onpointercancel = () => {
+
+    joyPointer = null;
+
+    joyX = 0;
+    joyY = 0;
+
+    stick.style.left = "40px";
+    stick.style.top = "40px";
+};
+
+function updateJoy(e) {
+
+    const r = joy.getBoundingClientRect();
+
+    let x =
+        e.clientX -
+        (r.left + r.width/2);
+
+    let y =
+        e.clientY -
+        (r.top + r.height/2);
+
+    const max = 42;
+
+    const len = Math.sqrt(x*x+y*y);
+
+    if(len > max) {
+
+        x = x/len*max;
+        y = y/len*max;
+    }
+
+    joyX = x/max;
+    joyY = y/max;
+
+    stick.style.left =
+        `${40+x}px`;
+
+    stick.style.top =
+        `${40+y}px`;
+}
+
+/* =========================
+   ACTION BUTTONS
+========================= */
+
+button("🪓",120,95,gather);
+button("🍖",35,180,eat);
+button("🔥",120,180,cook);
+button("🏕️",205,95,buildShelter);
+
+/* =========================
+   MESSAGE
+========================= */
+
+const message = document.createElement("div");
+
+message.style.cssText = `
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+padding:15px 25px;
+border-radius:15px;
+background:rgba(0,0,0,.7);
+color:white;
+font-size:18px;
+font-weight:bold;
+display:none;
+text-align:center;
+`;
+
+ui.appendChild(message);
+
+let msgTimer = 0;
+
+function toast(text) {
+
+    message.textContent = text;
+    message.style.display = "block";
+
+    clearTimeout(msgTimer);
+
+    msgTimer = setTimeout(() => {
+        message.style.display = "none";
+    },1800);
+}
+
+/* =========================
+   FIND RESOURCE
+========================= */
+
+function nearestResource() {
+
+    let best = null;
+    let dist = Infinity;
+
+    for(const r of resources) {
+
+        if(!r.visible) continue;
+
+        const d =
+            player.position.distanceTo(r.position);
+
+        if(d < dist) {
+
+            dist = d;
+            best = r;
+        }
+    }
+
+    return {
+        object:best,
+        distance:dist
+    };
+}
+
+/* =========================
+   GATHER
+========================= */
+
+function gather() {
+
+    const n = nearestResource();
+
+    if(!n.object || n.distance > 4) {
+
+        toast("Dekati resource dulu");
+        return;
+    }
+
+    const o = n.object;
+
+    if(o.userData.type === "tree") {
+
+        o.userData.hp--;
+
+        toast("🪵 Menebang pohon");
+
+        if(o.userData.hp <= 0) {
+
+            o.visible = false;
+
+            save.wood += 4;
+
+            toast("🪵 +4 Kayu");
+        }
+    }
+
+    else if(o.userData.type === "rock") {
+
+        o.userData.hp--;
+
+        if(o.userData.hp <= 0) {
+
+            o.visible = false;
+
+            save.stone += 3;
+
+            toast("🪨 +3 Batu");
+        }
+    }
+
+    else if(o.userData.type === "berry") {
+
+        o.visible = false;
+
+        save.berry += 3;
+
+        toast("🫐 +3 Berry");
+    }
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   EAT
+========================= */
+
+function eat() {
+
+    if(save.berry <= 0) {
+
+        toast("Tidak punya berry");
+        return;
+    }
+
+    save.berry--;
+
+    save.hunger =
+        Math.min(100,save.hunger+18);
+
+    toast("🫐 Makan berry");
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   CAMPFIRE
+========================= */
+
+function buildCampfire() {
+
+    if(save.campfire) return;
+
+    if(save.wood < 5 ||
+       save.stone < 3) {
+
+        toast("Butuh 5 kayu + 3 batu");
+        return;
+    }
+
+    save.wood -= 5;
+    save.stone -= 3;
+    save.campfire = true;
+
+    const fire = new THREE.Group();
+
+    for(let i=0;i<5;i++) {
+
+        const log = new THREE.Mesh(
+            new THREE.CylinderGeometry(
+                .16,.2,1.3,6
+            ),
+            new THREE.MeshLambertMaterial({
+                color:0x643b20
+            })
+        );
+
+        log.rotation.z =
+            Math.PI/2;
+
+        log.rotation.y =
+            i*.7;
+
+        log.position.y=.25;
+
+        fire.add(log);
+    }
+
+    const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(
+            .5,
+            1.5,
+            8
+        ),
+        new THREE.MeshBasicMaterial({
+            color:0xff7b16
+        })
+    );
+
+    flame.position.y=1;
+
+    fire.add(flame);
+
+    fire.position.copy(player.position);
+
+    scene.add(fire);
+    buildings.push(fire);
+
+    toast("🔥 Api unggun dibuat");
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   COOK
+========================= */
+
+function cook() {
+
+    if(!save.campfire) {
+
+        buildCampfire();
+        return;
+    }
+
+    if(save.fish <= 0) {
+
+        toast("Belum punya ikan");
+        return;
+    }
+
+    save.fish--;
+
+    save.cooked++;
+
+    toast("🍖 Ikan dimasak");
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   EAT COOKED
+========================= */
+
+function eatCooked() {
+
+    if(save.cooked <= 0) {
+
+        toast("Tidak ada makanan");
+        return;
+    }
+
+    save.cooked--;
+
+    save.hunger =
+        Math.min(100,save.hunger+35);
+
+    save.health =
+        Math.min(100,save.health+8);
+
+    toast("🍖 Makan ikan matang");
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   BUILD SHELTER
+========================= */
+
+function buildShelter() {
+
+    if(save.shelter) {
+
+        toast("🏕️ Shelter sudah ada");
+        return;
+    }
+
+    if(save.wood < 12 ||
+       save.stone < 5) {
+
+        toast("Butuh 12 kayu + 5 batu");
+        return;
+    }
+
+    save.wood -= 12;
+    save.stone -= 5;
+    save.shelter = true;
+
+    const g = new THREE.Group();
+
+    const floor = new THREE.Mesh(
+        new THREE.BoxGeometry(5,.3,5),
+        new THREE.MeshLambertMaterial({
+            color:0x69452b
+        })
+    );
+
+    floor.position.y=.3;
+    g.add(floor);
+
+    const roof = new THREE.Mesh(
+        new THREE.ConeGeometry(
+            3.7,
+            2.5,
+            4
+        ),
+        new THREE.MeshLambertMaterial({
+            color:0x81472d
+        })
+    );
+
+    roof.position.y=3.5;
+    roof.rotation.y=Math.PI/4;
+    g.add(roof);
+
+    g.position.copy(player.position);
+    scene.add(g);
+
+    buildings.push(g);
+
+    toast("🏕️ Shelter berhasil dibuat");
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   FISHING
+========================= */
+
+function fish() {
+
+    const r =
+        Math.sqrt(
+            player.position.x**2 +
+            player.position.z**2
+        );
+
+    if(r < CFG.island-8) {
+
+        toast("🎣 Dekati pantai");
+        return;
+    }
+
+    if(Math.random() < .65) {
+
+        save.fish++;
+
+        toast("🎣 Dapat ikan!");
+    } else {
+
+        toast("🐟 Ikan lolos");
+    }
+
+    saveGame();
+    updateHUD();
+}
+
+/* =========================
+   FISH BUTTON
+========================= */
+
+button("🎣",35,95,fish);
+
+/* =========================
+   EXTRA FOOD BUTTON
+========================= */
+
+button("🍖",35,280,eatCooked);
+
+/* =========================
+   HUD
+========================= */
+
+function bar(value) {
+
+    const pct =
+        Math.max(0,Math.min(100,value));
+
+    return `
+    <div style="
+    width:100%;
+    height:8px;
+    background:#222;
+    border-radius:5px;
+    margin:3px 0 6px">
+        <div style="
+        width:${pct}%;
+        height:100%;
+        background:#fff;
+        border-radius:5px">
+        </div>
+    </div>`;
+}
+
+function updateHUD() {
+
+    stats.innerHTML = `
+    ❤️ Health ${Math.round(save.health)}
+    ${bar(save.health)}
+
+    🍗 Hunger ${Math.round(save.hunger)}
+    ${bar(save.hunger)}
+
+    💧 Thirst ${Math.round(save.thirst)}
+    ${bar(save.thirst)}
+
+    ⚡ Stamina ${Math.round(save.stamina)}
+    ${bar(save.stamina)}
+    `;
+
+    resourcesUI.innerHTML = `
+    🪵 ${save.wood}
+    &nbsp; 🪨 ${save.stone}
+    &nbsp; 🫐 ${save.berry}
+    <br>
+    🥥 ${save.coconut}
+    &nbsp; 🐟 ${save.fish}
+    &nbsp; 🍖 ${save.cooked}
+    <br>
+    📅 Day ${save.day}
+    &nbsp; ${String(Math.floor(save.time)).padStart(2,"0")}:00
+    `;
+}
+
+updateHUD();
+
+/* =========================
+   CAMERA TOUCH
+========================= */
+
+let cameraPointer = null;
+let lastPX = 0;
+let lastPY = 0;
+
+canvas.addEventListener("pointerdown",e => {
+
+    if(e.clientX < innerWidth*.42)
+        return;
+
+    cameraPointer = e.pointerId;
+
+    lastPX = e.clientX;
+    lastPY = e.clientY;
+
+    canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener("pointermove",e => {
+
+    if(e.pointerId !== cameraPointer)
+        return;
+
+    const dx =
+        e.clientX-lastPX;
+
+    const dy =
+        e.clientY-lastPY;
+
+    yaw += dx*.006;
+
+    pitch += dy*.004;
+
+    pitch =
+        Math.max(-.1,Math.min(1.1,pitch));
+
+    lastPX=e.clientX;
+    lastPY=e.clientY;
+});
+
+canvas.addEventListener("pointerup",() => {
+    cameraPointer=null;
+});
+
+canvas.addEventListener("pointercancel",() => {
+    cameraPointer=null;
+});
+
+/* =========================
+   MOVEMENT
+========================= */
+
+function movePlayer(dt) {
+
+    const ax = joyX;
+    const ay = joyY;
+
+    moving =
+        Math.abs(ax)>.08 ||
+        Math.abs(ay)>.08;
+
+    if(!moving) return;
+
+    const speed =
+        running && save.stamina>0
+        ? 9
+        : 5;
+
+    if(running)
+        save.stamina =
+            Math.max(
+                0,
+                save.stamina-dt*15
+            );
+    else
+        save.stamina =
+            Math.min(
+                100,
+                save.stamina+dt*8
+            );
+
+    const forward =
+        new THREE.Vector3(
+            Math.sin(yaw),
+            0,
+            Math.cos(yaw)
+        );
+
+    const right =
+        new THREE.Vector3(
+            Math.cos(yaw),
+            0,
+            -Math.sin(yaw)
+        );
+
+    const dir =
+        new THREE.Vector3();
+
+    dir.addScaledVector(
+        forward,
+        -ay
+    );
+
+    dir.addScaledVector(
+        right,
+        ax
+    );
+
+    if(dir.lengthSq()>0)
+        dir.normalize();
+
+    player.position.addScaledVector(
+        dir,
+        speed*dt
+    );
+
+    /* island boundary */
+
+    const d =
+        Math.sqrt(
+            player.position.x**2 +
+            player.position.z**2
+        );
+
+    const limit =
+        CFG.island-4;
+
+    if(d > limit) {
+
+        player.position.x *=
+            limit/d;
+
+        player.position.z *=
+            limit/d;
+    }
+
+    if(dir.lengthSq()>0) {
+
+        player.rotation.y =
+            Math.atan2(
+                dir.x,
+                dir.z
+            );
+    }
+
+    save.x=player.position.x;
+    save.z=player.position.z;
+}
+
+/* =========================
+   ANIMAL AI
+========================= */
+
+function updateAnimals(dt) {
+
+    for(const a of animals) {
+
+        if(!a.visible) continue;
+
+        const dist =
+            a.position.distanceTo(
+                player.position
+            );
+
+        if(dist < 12) {
+
+            const dx =
+                a.position.x -
+                player.position.x;
+
+            const dz =
+                a.position.z -
+                player.position.z;
+
+            const len =
+                Math.sqrt(dx*dx+dz*dz)||1;
+
+            a.position.x +=
+                dx/len*a.userData.speed*dt;
+
+            a.position.z +=
+                dz/len*a.userData.speed*dt;
+
+            a.rotation.y =
+                Math.atan2(dx,dz);
+        }
+    }
+}
+
+/* =========================
+   ATTACK
+========================= */
+
+function attack() {
+
+    let best=null;
+    let dist=3.2;
+
+    for(const a of animals) {
+
+        if(!a.visible) continue;
+
+        const d =
+            a.position.distanceTo(
+                player.position
+            );
+
+        if(d<dist) {
+
+            dist=d;
+            best=a;
+        }
+    }
+
+    if(!best) {
+
+        toast("Tidak ada hewan");
+        return;
+    }
+
+    best.userData.hp -= 10;
+
+    if(best.userData.hp<=0) {
+
+        best.visible=false;
+
+        save.berry += 1;
+
+        toast("🐗 Hewan dikalahkan +1 makanan");
+    } else {
+
+        toast("⚔️ Serangan!");
+    }
+
+    saveGame();
+    updateHUD();
+}
+
+button("⚔️",120,280,attack);
+
+/* =========================
+   DAY / NIGHT
+========================= */
+
+function updateDay(dt) {
+
+    save.time += dt*.8;
+
+    if(save.time >= 24) {
+
+        save.time=0;
+        save.day++;
+    }
+
+    const t =
+        save.time/24 *
+        Math.PI*2;
+
+    sun.position.set(
+        Math.cos(t)*100,
+        Math.sin(t)*100,
+        30
+    );
+
+    const daylight =
+        Math.max(
+            .12,
+            Math.sin(t)*.5+.5
+        );
+
+    hemi.intensity =
+        .55+daylight*1.5;
+
+    sun.intensity =
+        .4+daylight*2.4;
+
+    const night =
+        1-daylight;
+
+    scene.background.lerp(
+        new THREE.Color(0x081827),
+        night*.02
+    );
+
+    scene.fog.color.copy(
+        scene.background
+    );
+
+    /* survival */
+
+    save.hunger =
+        Math.max(
+            0,
+            save.hunger-dt*.35
+        );
+
+    save.thirst =
+        Math.max(
+            0,
+            save.thirst-dt*.55
+        );
+
+    if(save.hunger<=0 ||
+       save.thirst<=0) {
+
+        save.health =
+            Math.max(
+                0,
+                save.health-dt*2
+            );
+    }
+
+    if(save.health<=0) {
+
+        save.health=50;
+        save.hunger=50;
+        save.thirst=50;
+
+        player.position.set(0,0,12);
+
+        toast("💀 Kamu pingsan dan kembali ke pantai");
+    }
+}
+
+/* =========================
+   WATER ANIMATION
+========================= */
+
+let waterTime=0;
+
+function animateWater(dt) {
+
+    waterTime += dt;
+
+    ocean.position.y =
+        -.8+
+        Math.sin(waterTime*.8)*.08;
+
+    ocean.rotation.z =
+        Math.sin(waterTime*.15)*.002;
+}
+
+/* =========================
+   TREE WIND
+========================= */
+
+function animateTrees(t) {
+
+    for(let i=0;i<trees.length;i++) {
+
+        const tree=trees[i];
+
+        if(!tree.visible) continue;
+
+        tree.rotation.z =
+            Math.sin(
+                t*.001+i
+            )*.018;
+    }
+}
+
+/* =========================
+   CAMERA
+========================= */
+
+const camTarget = new THREE.Vector3();
+
+function updateCamera() {
+
+    const distance=12;
+
+    const horizontal =
+        Math.cos(pitch)*distance;
+
+    camera.position.x =
+        player.position.x +
+        Math.sin(yaw)*horizontal;
+
+    camera.position.z =
+        player.position.z +
+        Math.cos(yaw)*horizontal;
+
+    camera.position.y =
+        player.position.y +
+        3 +
+        Math.sin(pitch)*distance;
+
+    camTarget.copy(player.position);
+
+    camTarget.y += 1.4;
+
+    camera.lookAt(camTarget);
+}
+
+/* =========================
+   RUN BUTTON
+========================= */
+
+const runButton =
+button("🏃",205,180,()=>{});
+
+runButton.onpointerdown = () => {
+    running=true;
+};
+
+runButton.onpointerup = () => {
+    running=false;
+};
+
+runButton.onpointercancel = () => {
+    running=false;
+};
+
+/* =========================
+   RESIZE
+========================= */
+
+window.addEventListener("resize",() => {
+
+    camera.aspect =
+        innerWidth/innerHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+        innerWidth,
+        innerHeight,
+        false
+    );
+});
+
+/* =========================
+   AUTOSAVE
+========================= */
+
+setInterval(saveGame,10000);
+
+/* =========================
+   GAME LOOP
+========================= */
+
+function loop(now) {
+
+    requestAnimationFrame(loop);
+
+    let dt =
+        (now-lastTime)/1000;
+
+    lastTime=now;
+
+    dt=Math.min(dt,.05);
+
+    movePlayer(dt);
+    updateAnimals(dt);
+    updateDay(dt);
+    animateWater(dt);
+    animateTrees(now);
+    updateCamera();
+
+    renderer.render(
+        scene,
+        camera
+    );
+
+    if(Math.floor(now/500)%2===0)
+        updateHUD();
+}
+
+updateCamera();
+updateHUD();
+
 requestAnimationFrame(loop);
-window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight,false)});
-applySettings();updateHUD();makeToast();saveGame();if(MP.auth)setTimeout(connectMultiplayer,1200);
-console.log("VALEN ISLAND SURVIVAL — FINAL BUILD LOADED");
+
+toast("🏝️ Selamat datang di Valen Island!");
+
 })();
