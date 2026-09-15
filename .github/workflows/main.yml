@@ -51,15 +51,17 @@ jobs:
         run: |
           cat > capacitor.config.json <<'EOF'
           {
-            "appId": "com.nebulax.game",
-            "appName": "NEBULA X",
+            "appId": "com.valen.islandsurvival",
+            "appName": "Valen Island Survival",
             "webDir": "www"
           }
           EOF
 
       - name: Add Android
         run: npx cap add android
-
+      - name: Set landscape orientation
+        run: |
+          sed -i 's/android:theme=/android:screenOrientation="landscape" android:theme=/' android/app/src/main/AndroidManifest.xml
       - name: Sync game
         run: npx cap sync android
 
@@ -72,5 +74,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NEBULA-X-APK
+          name: VALEN-ISLAND-SURVIVAL-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
