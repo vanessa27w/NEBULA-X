@@ -1,1371 +1,3254 @@
-/* =========================================================
-   VALEN ISLAND SURVIVAL
-   FINAL STABLE ANDROID BUILD
-   3D SURVIVAL — NO MULTIPLAYER
-   ========================================================= */
+/* ============================================================
+   VALEN ISLAND SURVIVAL — FINAL SINGLE PLAYER
+   Stable Android / Three.js / Touch controls / Landscape
+   ============================================================ */
 
-(() => {
-"use strict";
+(function () {
+  "use strict";
 
-/* =========================
-   SAFE START
-========================= */
+  if (window.__VALEN_FINAL__) return;
+  window.__VALEN_FINAL__ = true;
 
-if (window.__VALEN_FINAL__) return;
-window.__VALEN_FINAL__ = true;
+  /* ---------- HELPERS ---------- */
 
-const THREE = window.THREE;
+  const $ = id => document.getElementById(id);
 
-if (!THREE) {
-    document.body.innerHTML = `
-        <div style="
-        position:fixed;inset:0;
-        display:flex;align-items:center;
-        justify-content:center;
-        background:#071923;color:white;
-        font:20px Arial;text-align:center">
-        THREE.JS GAGAL DIMUAT<br>
-        Periksa koneksi internet lalu buka ulang game.
-        </div>`;
-    return;
-}
+  const clamp = (v, a, b) =>
+    Math.max(a, Math.min(b, v));
 
-/* =========================
-   CONFIG
-========================= */
+  const lerp = (a, b, t) =>
+    a + (b - a) * t;
 
-const CFG = {
-    world: 220,
-    island: 82,
-    water: 280,
-    maxTrees: 90,
-    maxRocks: 70,
-    maxBushes: 45,
-    maxAnimals: 20
-};
+  const rnd = (a, b) =>
+    a + Math.random() * (b - a);
 
-/* =========================
-   SAVE
-========================= */
+  const rndi = (a, b) =>
+    Math.floor(rnd(a, b + 1));
 
-const SAVE_KEY = "VALEN_SURVIVAL_SAVE_V6";
+  const distance = (a, b) => {
+    const dx = a.x - b.x;
+    const dz = a.z - b.z;
+    return Math.sqrt(dx * dx + dz * dz);
+  };
 
-let save = {
-    wood: 0,
-    stone: 0,
-    berry: 0,
-    coconut: 0,
-    fish: 0,
+  /* ---------- SAVE ---------- */
 
+  const SAVE_KEY = "VALEN_ISLAND_SURVIVAL_FINAL";
+
+  let save = {
+    version: 1,
+
+    x: 0,
+    z: 0,
+
+    health: 100,
     hunger: 100,
     thirst: 100,
-    health: 100,
     stamina: 100,
+
+    wood: 0,
+    stone: 0,
+    berry: 2,
+    coconut: 0,
+    fish: 0,
+    cookedFish: 0,
 
     day: 1,
     time: 8,
+
+    weather: "clear",
+
+    quest: 0,
     chapter: 1,
 
-    x: 0,
-    z: 12,
+    crystal: 0,
+    beacon: 0,
 
-    cooked: 0,
-    shelter: false,
-    campfire: false,
-    beacon: false,
+    campfire: 0,
+    shelter: 0,
+    storage: 0,
 
-    achievements: []
-};
+    achievements: [],
 
-try {
-    const old = JSON.parse(localStorage.getItem(SAVE_KEY));
-    if (old) save = Object.assign(save, old);
-} catch(e) {}
+    settings: {
+      sensitivity: 0.006,
+      invertY: false,
 
-function saveGame() {
+      joystickSize: 1,
+      buttonSize: 1,
+
+      graphics: "High",
+      fps: 60,
+      shadow: true,
+      effects: true,
+      viewDistance: 180,
+      antiAlias: true,
+      batterySaver: false,
+
+      master: 80,
+      music: 20,
+      sfx: 80,
+      ambient: 70,
+      mute: false,
+
+      hud: true,
+      damageNumbers: true,
+      cameraShake: true,
+      autoPickup: false,
+      vibration: true,
+
+      language: "id"
+    }
+  };
+
+  function loadGame() {
+
     try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-    } catch(e) {}
-}
 
-/* =========================
-   SCREEN
-========================= */
+      const raw =
+        localStorage.getItem(SAVE_KEY);
 
-document.body.innerHTML = "";
+      if (!raw) return;
 
-document.body.style.cssText = `
-margin:0;
-overflow:hidden;
-background:#06151d;
-font-family:Arial,sans-serif;
-touch-action:none;
-user-select:none;
-`;
+      const data =
+        JSON.parse(raw);
 
-const canvas = document.createElement("canvas");
-canvas.style.cssText = `
-position:fixed;
-inset:0;
-width:100%;
-height:100%;
-display:block;
-`;
-document.body.appendChild(canvas);
+      save = Object.assign(
+        save,
+        data
+      );
 
-/* =========================
-   RENDERER
-========================= */
+      save.settings =
+        Object.assign(
+          {
+            sensitivity: 0.006,
+            invertY: false,
 
-let renderer;
+            joystickSize: 1,
+            buttonSize: 1,
 
-try {
-    renderer = new THREE.WebGLRenderer({
-        canvas,
-        antialias:false,
-        powerPreference:"high-performance",
-        alpha:false
-    });
-} catch(e) {
-    document.body.innerHTML = `
-    <div style="
-    position:fixed;inset:0;
-    background:#071923;color:white;
-    display:flex;align-items:center;
-    justify-content:center;
-    font:20px Arial;text-align:center">
-    HP tidak mendukung WebGL.
-    </div>`;
-    return;
-}
+            graphics: "High",
+            fps: 60,
+            shadow: true,
+            effects: true,
+            viewDistance: 180,
+            antiAlias: true,
+            batterySaver: false,
 
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-renderer.setSize(innerWidth, innerHeight, false);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+            master: 80,
+            music: 20,
+            sfx: 80,
+            ambient: 70,
+            mute: false,
 
-/* =========================
-   SCENE
-========================= */
+            hud: true,
+            damageNumbers: true,
+            cameraShake: true,
+            autoPickup: false,
+            vibration: true,
 
-const scene = new THREE.Scene();
-
-scene.background = new THREE.Color(0x79c9e8);
-scene.fog = new THREE.Fog(0x79c9e8, 90, 240);
-
-const camera = new THREE.PerspectiveCamera(
-    62,
-    innerWidth / innerHeight,
-    0.1,
-    350
-);
-
-camera.position.set(0, 8, 16);
-
-/* =========================
-   LIGHT
-========================= */
-
-const hemi = new THREE.HemisphereLight(
-    0xbfeaff,
-    0x385027,
-    2.2
-);
-
-scene.add(hemi);
-
-const sun = new THREE.DirectionalLight(
-    0xffffff,
-    3
-);
-
-sun.position.set(50,100,30);
-scene.add(sun);
-
-/* =========================
-   OCEAN
-========================= */
-
-const oceanGeo = new THREE.CircleGeometry(CFG.water, 96);
-
-const oceanMat = new THREE.MeshPhongMaterial({
-    color:0x167fa0,
-    shininess:100,
-    transparent:true,
-    opacity:.92
-});
-
-const ocean = new THREE.Mesh(
-    oceanGeo,
-    oceanMat
-);
-
-ocean.rotation.x = -Math.PI / 2;
-ocean.position.y = -0.8;
-
-scene.add(ocean);
-
-/* =========================
-   ISLAND
-========================= */
-
-const islandGeo = new THREE.CylinderGeometry(
-    CFG.island,
-    CFG.island + 12,
-    4,
-    96
-);
-
-const islandMat = new THREE.MeshLambertMaterial({
-    color:0x3f9b48
-});
-
-const island = new THREE.Mesh(
-    islandGeo,
-    islandMat
-);
-
-island.position.y = -1;
-scene.add(island);
-
-/* =========================
-   BEACH
-========================= */
-
-const beachGeo = new THREE.CylinderGeometry(
-    CFG.island + 3,
-    CFG.island + 5,
-    .8,
-    96
-);
-
-const beachMat = new THREE.MeshLambertMaterial({
-    color:0xe3c47b
-});
-
-const beach = new THREE.Mesh(
-    beachGeo,
-    beachMat
-);
-
-beach.position.y = .15;
-scene.add(beach);
-
-/* =========================
-   TERRAIN CENTER
-========================= */
-
-const landGeo = new THREE.CylinderGeometry(
-    CFG.island - 4,
-    CFG.island,
-    1.8,
-    96
-);
-
-const landMat = new THREE.MeshLambertMaterial({
-    color:0x4eac4c
-});
-
-const land = new THREE.Mesh(
-    landGeo,
-    landMat
-);
-
-land.position.y = .5;
-scene.add(land);
-
-/* =========================
-   OBJECT ARRAYS
-========================= */
-
-const trees = [];
-const rocks = [];
-const bushes = [];
-const animals = [];
-const resources = [];
-const buildings = [];
-
-/* =========================
-   RANDOM POSITION
-========================= */
-
-function randomIslandPos(min = 8, max = CFG.island - 7) {
-
-    const a = Math.random() * Math.PI * 2;
-    const r = min + Math.sqrt(Math.random()) * (max-min);
-
-    return {
-        x:Math.cos(a)*r,
-        z:Math.sin(a)*r
-    };
-}
-
-/* =========================
-   TREE
-========================= */
-
-function createTree(x,z) {
-
-    const g = new THREE.Group();
-
-    const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(.45,.65,5,8),
-        new THREE.MeshLambertMaterial({
-            color:0x754625
-        })
-    );
-
-    trunk.position.y = 3;
-    g.add(trunk);
-
-    const crown = new THREE.Group();
-
-    for(let i=0;i<7;i++) {
-
-        const leaf = new THREE.Mesh(
-            new THREE.ConeGeometry(
-                .65,
-                4.2,
-                7
-            ),
-            new THREE.MeshLambertMaterial({
-                color:0x14752e
-            })
+            language: "id"
+          },
+          data.settings || {}
         );
 
-        const a = i / 7 * Math.PI * 2;
+    } catch (e) {
 
-        leaf.position.set(
-            Math.cos(a)*1.4,
-            5.8,
-            Math.sin(a)*1.4
-        );
+      console.warn(
+        "VALEN SAVE LOAD ERROR",
+        e
+      );
 
-        leaf.rotation.z =
-            Math.cos(a)*.45;
-
-        leaf.rotation.x =
-            Math.sin(a)*.45;
-
-        crown.add(leaf);
     }
 
-    g.add(crown);
+  }
 
-    g.position.set(x,0,z);
+  function saveGame() {
 
-    g.userData.type = "tree";
-    g.userData.hp = 3;
-    g.userData.resource = "wood";
+    try {
 
-    scene.add(g);
-    trees.push(g);
-    resources.push(g);
-}
+      localStorage.setItem(
+        SAVE_KEY,
+        JSON.stringify(save)
+      );
 
-/* =========================
-   ROCK
-========================= */
+    } catch (e) {
 
-function createRock(x,z) {
+      console.warn(
+        "VALEN SAVE ERROR",
+        e
+      );
 
-    const rock = new THREE.Mesh(
-        new THREE.DodecahedronGeometry(
-            .8 + Math.random()*.7,
-            0
-        ),
-        new THREE.MeshLambertMaterial({
-            color:0x777b78
-        })
-    );
-
-    rock.position.set(x,.8,z);
-
-    rock.scale.y = .7;
-
-    rock.userData.type = "rock";
-    rock.userData.hp = 2;
-    rock.userData.resource = "stone";
-
-    scene.add(rock);
-    rocks.push(rock);
-    resources.push(rock);
-}
-
-/* =========================
-   BERRY
-========================= */
-
-function createBush(x,z) {
-
-    const g = new THREE.Group();
-
-    const bush = new THREE.Mesh(
-        new THREE.SphereGeometry(1.1,10,8),
-        new THREE.MeshLambertMaterial({
-            color:0x207e36
-        })
-    );
-
-    bush.position.y = 1;
-    g.add(bush);
-
-    for(let i=0;i<5;i++) {
-
-        const berry = new THREE.Mesh(
-            new THREE.SphereGeometry(.12,6,6),
-            new THREE.MeshLambertMaterial({
-                color:0xd92f45
-            })
-        );
-
-        berry.position.set(
-            (Math.random()-.5)*1.5,
-            .8+Math.random()*.7,
-            (Math.random()-.5)*1.5
-        );
-
-        g.add(berry);
     }
 
-    g.position.set(x,0,z);
+  }
 
-    g.userData.type = "berry";
-    g.userData.resource = "berry";
+  loadGame();
 
-    scene.add(g);
-    bushes.push(g);
-    resources.push(g);
-}
+  window.saveGame = saveGame;
 
-/* =========================
-   ANIMAL
-========================= */
+  /* ---------- AUDIO ---------- */
 
-function createAnimal(x,z) {
+  let audioCtx = null;
 
-    const g = new THREE.Group();
+  function audioReady() {
 
-    const body = new THREE.Mesh(
-        new THREE.SphereGeometry(
-            1.15,
-            12,
-            8
-        ),
-        new THREE.MeshLambertMaterial({
-            color:0x71462c
-        })
-    );
+    if (!audioCtx) {
 
-    body.scale.set(1.4,.8,.9);
-    body.position.y = 1.25;
-    g.add(body);
+      try {
 
-    const head = new THREE.Mesh(
-        new THREE.SphereGeometry(.65,10,8),
-        new THREE.MeshLambertMaterial({
-            color:0x5d3926
-        })
-    );
+        audioCtx =
+          new (
+            window.AudioContext ||
+            window.webkitAudioContext
+          )();
 
-    head.position.set(1.1,1.5,0);
-    g.add(head);
+      } catch (e) {
 
-    for(let i=0;i<4;i++) {
+        return false;
 
-        const leg = new THREE.Mesh(
-            new THREE.CylinderGeometry(
-                .13,.16,.9,6
-            ),
-            new THREE.MeshLambertMaterial({
-                color:0x3d291d
-            })
-        );
+      }
 
-        leg.position.set(
-            i<2 ? .7:-.7,
-            .6,
-            i%2 ? -.45:.45
-        );
-
-        g.add(leg);
     }
 
-    g.position.set(x,0,z);
+    if (
+      audioCtx.state ===
+      "suspended"
+    ) {
 
-    g.userData.type = "animal";
-    g.userData.hp = 30;
-    g.userData.speed = .7 + Math.random()*.5;
+      audioCtx
+        .resume()
+        .catch(() => {});
 
-    scene.add(g);
-    animals.push(g);
+    }
+
+    return true;
+  }
+
+  function beep(
+    frequency = 440,
+    duration = 0.08,
+    type = "sine",
+    volume = 0.05
+  ) {
+
+    if (
+      save.settings.mute ||
+      save.settings.sfx <= 0 ||
+      !audioReady()
+    ) return;
+
+    try {
+
+      const oscillator =
+        audioCtx.createOscillator();
+
+      const gain =
+        audioCtx.createGain();
+
+      oscillator.type = type;
+
+      oscillator.frequency.value =
+        frequency;
+
+      gain.gain.value =
+        volume *
+        (save.settings.sfx / 100) *
+        (save.settings.master / 100);
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        audioCtx.currentTime + duration
+      );
+
+      oscillator.connect(gain);
+
+      gain.connect(
+        audioCtx.destination
+      );
+
+      oscillator.start();
+
+      oscillator.stop(
+        audioCtx.currentTime +
+        duration
+      );
+
+    } catch (e) {}
+
+  }
+
+  function sfx(name) {
+
+    if (name === "pickup") {
+
+      beep(
+        650,
+        0.06,
+        "triangle",
+        0.07
+      );
+
+      beep(
+        900,
+        0.08,
+        "triangle",
+        0.05
+      );
+
+    }
+
+    else if (name === "hit") {
+
+      beep(
+        90,
+        0.10,
+        "sawtooth",
+        0.08
+      );
+
+    }
+
+    else if (name === "jump") {
+
+      beep(
+        360,
+        0.10,
+        "sine",
+        0.05
+      );
+
+    }
+
+    else if (name === "fish") {
+
+      beep(
+        500,
+        0.08,
+        "triangle",
+        0.07
+      );
+
+      beep(
+        800,
+        0.12,
+        "triangle",
+        0.06
+      );
+
+    }
+
+    else if (name === "craft") {
+
+      beep(
+        300,
+        0.08,
+        "square",
+        0.04
+      );
+
+      beep(
+        500,
+        0.12,
+        "square",
+        0.04
+      );
+
+    }
+
+    else if (name === "build") {
+
+      beep(
+        180,
+        0.08,
+        "square",
+        0.04
+      );
+
+      beep(
+        280,
+        0.12,
+        "square",
+        0.05
+      );
+
+    }
+
+    else if (name === "error") {
+
+      beep(
+        120,
+        0.18,
+        "sawtooth",
+        0.04
+      );
+
+    }
+
+    else {
+
+      beep(440, 0.06);
+
+    }
+
+  }
+
+  /* ---------- UI ---------- */
+
+  const ui =
+    document.createElement("div");
+
+  ui.id = "valenUI";
+
+  ui.innerHTML = `
+
+<style>
+
+#valenUI {
+  position:fixed;
+  inset:0;
+  z-index:10;
+  pointer-events:none;
+  color:#fff;
+  font-family:Arial,sans-serif;
+  text-shadow:0 2px 3px #000;
 }
 
-/* =========================
-   GENERATE WORLD
-========================= */
-
-for(let i=0;i<CFG.maxTrees;i++) {
-
-    const p = randomIslandPos(12,72);
-
-    createTree(p.x,p.z);
+#top {
+  position:absolute;
+  left:14px;
+  top:12px;
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
 }
 
-for(let i=0;i<CFG.maxRocks;i++) {
-
-    const p = randomIslandPos(10,76);
-
-    createRock(p.x,p.z);
+#bars {
+  width:205px;
+  background:rgba(0,0,0,.42);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:12px;
+  padding:8px;
+  backdrop-filter:blur(5px);
 }
 
-for(let i=0;i<CFG.maxBushes;i++) {
-
-    const p = randomIslandPos(8,74);
-
-    createBush(p.x,p.z);
+.bar {
+  height:12px;
+  background:rgba(255,255,255,.12);
+  border-radius:8px;
+  margin:4px 0;
+  overflow:hidden;
+  position:relative;
 }
 
-for(let i=0;i<CFG.maxAnimals;i++) {
-
-    const p = randomIslandPos(15,68);
-
-    createAnimal(p.x,p.z);
+.fill {
+  height:100%;
+  width:100%;
+  transition:width .15s;
 }
 
-/* =========================
-   PLAYER
-========================= */
+#hp {
+  background:#e74c3c;
+}
 
-const player = new THREE.Group();
+#hun {
+  background:#f1c40f;
+}
 
-const playerBody = new THREE.Mesh(
-    new THREE.CapsuleGeometry(
-        .55,
-        1.25,
-        6,
-        10
-    ),
-    new THREE.MeshLambertMaterial({
-        color:0x2d73d5
-    })
-);
+#thr {
+  background:#3498db;
+}
 
-playerBody.position.y = 1.3;
-player.add(playerBody);
+#sta {
+  background:#2ecc71;
+}
 
-const head = new THREE.Mesh(
-    new THREE.SphereGeometry(.42,12,10),
-    new THREE.MeshLambertMaterial({
-        color:0xf0bd8d
-    })
-);
+.lbl {
+  position:absolute;
+  left:5px;
+  top:-1px;
+  font-size:9px;
+  font-weight:bold;
+}
 
-head.position.y = 2.35;
-player.add(head);
+#info {
+  font-size:12px;
+  line-height:1.35;
+  background:rgba(0,0,0,.42);
+  padding:8px 10px;
+  border-radius:10px;
+}
 
-const backpack = new THREE.Mesh(
-    new THREE.BoxGeometry(.55,.7,.3),
-    new THREE.MeshLambertMaterial({
-        color:0x5a351f
-    })
-);
+#minimap {
+  position:absolute;
+  right:14px;
+  top:12px;
+  width:130px;
+  height:130px;
+  border:2px solid rgba(255,255,255,.5);
+  border-radius:50%;
+  background:rgba(0,35,45,.7);
+  box-shadow:0 4px 20px #0008;
+}
 
-backpack.position.set(0,1.35,-.55);
-player.add(backpack);
+#miniCanvas {
+  width:100%;
+  height:100%;
+  border-radius:50%;
+}
 
-player.position.set(
-    save.x || 0,
-    0,
-    save.z || 12
-);
+#toast {
+  position:absolute;
+  left:50%;
+  top:16%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,.7);
+  padding:10px 18px;
+  border-radius:14px;
+  font-weight:bold;
+  font-size:15px;
+  opacity:0;
+  transition:opacity .2s;
+  white-space:nowrap;
+}
 
-scene.add(player);
+#quest {
+  position:absolute;
+  left:14px;
+  top:155px;
+  background:rgba(0,0,0,.4);
+  border-radius:10px;
+  padding:8px 11px;
+  font-size:12px;
+  max-width:260px;
+}
 
-/* =========================
-   PLAYER STATE
-========================= */
+#joystick {
+  position:absolute;
+  left:24px;
+  bottom:24px;
+  width:145px;
+  height:145px;
+  border-radius:50%;
+  background:rgba(255,255,255,.08);
+  border:2px solid rgba(255,255,255,.22);
+  pointer-events:auto;
+  touch-action:none;
+}
 
-let yaw = 0;
-let pitch = .35;
+#stick {
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:62px;
+  height:62px;
+  margin:-31px;
+  border-radius:50%;
+  background:rgba(255,255,255,.25);
+  border:2px solid rgba(255,255,255,.45);
+}
 
-let joyX = 0;
-let joyY = 0;
+#actions {
+  position:absolute;
+  right:25px;
+  bottom:25px;
+  width:245px;
+  height:190px;
+  pointer-events:none;
+}
 
-let moving = false;
-let running = false;
+.ab {
+  position:absolute;
+  width:66px;
+  height:66px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,.35);
+  background:rgba(10,20,30,.55);
+  color:#fff;
+  font-size:23px;
+  font-weight:bold;
+  pointer-events:auto;
+  touch-action:none;
+  box-shadow:0 4px 12px #0007;
+}
 
-let lastTime = performance.now();
+#run {
+  right:76px;
+  bottom:90px;
+}
 
-/* =========================
-   UI
-========================= */
+#jump {
+  right:0;
+  bottom:40px;
+}
 
-const ui = document.createElement("div");
+#act {
+  right:76px;
+  bottom:0;
+}
 
-ui.style.cssText = `
-position:fixed;
-inset:0;
-pointer-events:none;
-z-index:10;
-`;
+#menu {
+  right:0;
+  top:0;
+}
 
-document.body.appendChild(ui);
+#panel {
+  display:none;
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(92vw,600px);
+  max-height:88vh;
+  overflow:auto;
+  background:rgba(7,16,23,.96);
+  border:1px solid #ffffff33;
+  border-radius:18px;
+  padding:18px;
+  pointer-events:auto;
+  box-shadow:0 20px 70px #000;
+}
 
-const hud = document.createElement("div");
+#panel h2 {
+  margin:0 0 10px;
+}
 
-hud.style.cssText = `
-position:absolute;
-top:15px;
-left:15px;
-width:230px;
-padding:12px;
-border-radius:15px;
-background:rgba(0,0,0,.55);
-color:white;
-font-weight:bold;
-font-size:13px;
-`;
+#panel h3 {
+  margin:16px 0 6px;
+}
 
-hud.innerHTML = `
-<div style="font-size:18px;margin-bottom:7px">
-🏝️ VALEN ISLAND
+.row {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  padding:7px 0;
+  border-bottom:1px solid #ffffff12;
+}
+
+.row input,
+.row select {
+  max-width:55%;
+}
+
+.pbtn {
+  padding:9px 13px;
+  border:0;
+  border-radius:10px;
+  background:#1e88e5;
+  color:#fff;
+  font-weight:bold;
+  margin:4px;
+  pointer-events:auto;
+}
+
+#cross {
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:20px;
+  height:20px;
+  transform:translate(-50%,-50%);
+  opacity:.65;
+}
+
+#cross:before,
+#cross:after {
+  content:"";
+  position:absolute;
+  background:#fff;
+}
+
+#cross:before {
+  width:20px;
+  height:2px;
+  top:9px;
+}
+
+#cross:after {
+  height:20px;
+  width:2px;
+  left:9px;
+}
+
+@media(max-width:700px) {
+
+  #bars {
+    width:170px;
+  }
+
+  #minimap {
+    width:105px;
+    height:105px;
+  }
+
+  #quest {
+    top:140px;
+  }
+
+  .ab {
+    width:60px;
+    height:60px;
+  }
+
+  #actions {
+    width:220px;
+  }
+
+}
+
+</style>
+
+<div id="top">
+
+  <div id="bars">
+
+    <div class="bar">
+      <div id="hp" class="fill"></div>
+      <span class="lbl">❤️ HP</span>
+    </div>
+
+    <div class="bar">
+      <div id="hun" class="fill"></div>
+      <span class="lbl">🍖 LAPAR</span>
+    </div>
+
+    <div class="bar">
+      <div id="thr" class="fill"></div>
+      <span class="lbl">💧 HAUS</span>
+    </div>
+
+    <div class="bar">
+      <div id="sta" class="fill"></div>
+      <span class="lbl">⚡ STAMINA</span>
+    </div>
+
+  </div>
+
+  <div id="info"></div>
+
 </div>
 
-<div id="stats"></div>
+<div id="quest">
+  📜 Memulai...
+</div>
 
-<div id="resources"
-style="margin-top:8px;line-height:1.5"></div>
+<div id="minimap">
+  <canvas
+    id="miniCanvas"
+    width="130"
+    height="130">
+  </canvas>
+</div>
+
+<div id="toast"></div>
+
+<div id="cross"></div>
+
+<div id="joystick">
+  <div id="stick"></div>
+</div>
+
+<div id="actions">
+
+  <button class="ab" id="run">
+    🏃
+  </button>
+
+  <button class="ab" id="jump">
+    ⬆
+  </button>
+
+  <button class="ab" id="act">
+    ✋
+  </button>
+
+  <button class="ab" id="menu">
+    ☰
+  </button>
+
+</div>
+
+<div id="panel"></div>
 `;
 
-ui.appendChild(hud);
+  document.body.appendChild(ui);
 
-const stats = hud.querySelector("#stats");
-const resourcesUI = hud.querySelector("#resources");
+  let toastTimer;
 
-/* =========================
-   BUTTON
-========================= */
+  function toast(text) {
 
-function button(text, right, bottom, fn) {
+    const el = $("toast");
 
-    const b = document.createElement("button");
+    el.textContent = text;
 
-    b.textContent = text;
+    el.style.opacity = "1";
 
-    b.style.cssText = `
-    position:absolute;
-    right:${right}px;
-    bottom:${bottom}px;
-    width:70px;
-    height:70px;
-    border:2px solid rgba(255,255,255,.5);
-    border-radius:50%;
-    background:rgba(0,0,0,.48);
-    color:white;
-    font-size:24px;
-    pointer-events:auto;
-    touch-action:none;
-    `;
+    clearTimeout(toastTimer);
 
-    b.onpointerdown = e => {
-        e.preventDefault();
-        fn();
+    toastTimer =
+      setTimeout(
+        () => {
+          el.style.opacity = "0";
+        },
+        1800
+      );
+
+  }
+
+  /* ---------- THREE.JS CHECK ---------- */
+
+  if (
+    typeof THREE ===
+    "undefined"
+  ) {
+
+    toast(
+      "Three.js gagal dimuat. Cek koneksi internet."
+    );
+
+    return;
+
+  }
+
+  /* ---------- SCENE ---------- */
+
+  const scene =
+    new THREE.Scene();
+
+  scene.background =
+    new THREE.Color(
+      0x7fc9e8
+    );
+
+  scene.fog =
+    new THREE.Fog(
+      0x7fc9e8,
+      80,
+      save.settings.viewDistance
+    );
+
+  const camera =
+    new THREE.PerspectiveCamera(
+      62,
+      innerWidth / innerHeight,
+      0.1,
+      save.settings.viewDistance
+    );
+
+  camera.position.set(
+    0,
+    7,
+    12
+  );
+
+  const renderer =
+    new THREE.WebGLRenderer({
+      antialias:
+        save.settings.antiAlias !== false,
+
+      powerPreference:
+        save.settings.batterySaver
+          ? "low-power"
+          : "high-performance"
+    });
+
+  renderer.setPixelRatio(
+    Math.min(
+      devicePixelRatio,
+      save.settings.graphics === "Low"
+        ? 1
+        : save.settings.graphics === "Medium"
+          ? 1.5
+          : 2
+    )
+  );
+
+  renderer.setSize(
+    innerWidth,
+    innerHeight,
+    false
+  );
+
+  renderer.shadowMap.enabled =
+    save.settings.shadow !== false &&
+    save.settings.graphics !== "Low";
+
+  renderer.shadowMap.type =
+    THREE.PCFSoftShadowMap;
+
+  renderer.outputColorSpace =
+    THREE.SRGBColorSpace;
+
+  renderer.toneMapping =
+    THREE.ACESFilmicToneMapping;
+
+  renderer.toneMappingExposure =
+    1.05;
+
+  renderer.style =
+    "position:fixed;inset:0;z-index:-1";
+
+  renderer.domElement.style.position =
+    "fixed";
+
+  renderer.domElement.style.inset =
+    "0";
+
+  renderer.domElement.style.zIndex =
+    "-1";
+
+  document.body.appendChild(
+    renderer.domElement
+  );
+
+  /* ---------- LIGHT ---------- */
+
+  const hemi =
+    new THREE.HemisphereLight(
+      0x9edfff,
+      0x25452e,
+      1.7
+    );
+
+  scene.add(hemi);
+
+  const sun =
+    new THREE.DirectionalLight(
+      0xfff1cf,
+      2.5
+    );
+
+  sun.position.set(
+    80,
+    120,
+    40
+  );
+
+  sun.castShadow = true;
+
+  sun.shadow.mapSize.set(
+    1024,
+    1024
+  );
+
+  sun.shadow.camera.left = -120;
+  sun.shadow.camera.right = 120;
+  sun.shadow.camera.top = 120;
+  sun.shadow.camera.bottom = -120;
+
+  scene.add(sun);
+
+  /* ---------- WORLD ---------- */
+
+  const WORLD = 300;
+  const BEACH = 240;
+
+  const ocean =
+    new THREE.Mesh(
+      new THREE.PlaneGeometry(
+        1000,
+        1000,
+        80,
+        80
+      ),
+      new THREE.MeshPhongMaterial({
+        color:0x0b9bc0,
+        transparent:true,
+        opacity:.82,
+        shininess:100
+      })
+    );
+
+  ocean.rotation.x =
+    -Math.PI / 2;
+
+  ocean.position.y =
+    -.7;
+
+  scene.add(ocean);
+
+  const island =
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        BEACH,
+        BEACH * 1.02,
+        5,
+        96,
+        3
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x4d9b42,
+        roughness:.9
+      })
+    );
+
+  island.position.y =
+    -2.7;
+
+  island.receiveShadow =
+    true;
+
+  scene.add(island);
+
+  const sand =
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        BEACH * 1.02,
+        BEACH * 1.03,
+        1.3,
+        96
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0xd8c078,
+        roughness:1
+      })
+    );
+
+  sand.position.y =
+    -.35;
+
+  sand.receiveShadow =
+    true;
+
+  scene.add(sand);
+
+  const inner =
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        190,
+        205,
+        2.5,
+        80
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x2f873e,
+        roughness:1
+      })
+    );
+
+  inner.position.y =
+    .35;
+
+  inner.receiveShadow =
+    true;
+
+  scene.add(inner);
+
+  const mountain =
+    new THREE.Mesh(
+      new THREE.ConeGeometry(
+        65,
+        52,
+        48
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x315c35,
+        roughness:1
+      })
+    );
+
+  mountain.position.set(
+    -45,
+    25,
+    -45
+  );
+
+  mountain.castShadow =
+    true;
+
+  scene.add(mountain);
+'''
+print("BAGIAN 1/4 siap. Lanjut BAGIAN 2/4 setelah ini.")
+     /* ---------- PLANTS / RESOURCES ---------- */
+
+  const trees = [];
+  const rocks = [];
+  const berries = [];
+  const coconuts = [];
+
+  function createTree(x, z, height) {
+
+    const group =
+      new THREE.Group();
+
+    const trunk =
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          .45,
+          .65,
+          height,
+          8
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x70472a,
+          roughness:1
+        })
+      );
+
+    trunk.position.y =
+      height / 2;
+
+    trunk.castShadow = true;
+
+    group.add(trunk);
+
+    const leaves =
+      new THREE.Group();
+
+    for (
+      let i = 0;
+      i < 7;
+      i++
+    ) {
+
+      const leaf =
+        new THREE.Mesh(
+          new THREE.ConeGeometry(
+            .65,
+            5,
+            6
+          ),
+          new THREE.MeshStandardMaterial({
+            color:0x1f7e3b,
+            roughness:.8
+          })
+        );
+
+      leaf.rotation.z =
+        Math.PI / 2;
+
+      leaf.rotation.y =
+        i * Math.PI * 2 / 7;
+
+      leaf.position.y =
+        height + .15;
+
+      leaf.position.x =
+        Math.cos(
+          i * Math.PI * 2 / 7
+        ) * 2.1;
+
+      leaf.position.z =
+        Math.sin(
+          i * Math.PI * 2 / 7
+        ) * 2.1;
+
+      leaf.castShadow = true;
+
+      leaves.add(leaf);
+
+    }
+
+    group.add(leaves);
+
+    group.position.set(
+      x,
+      0,
+      z
+    );
+
+    group.userData = {
+      type:"tree",
+      hp:3,
+      phase:Math.random()*10
     };
 
-    ui.appendChild(b);
+    scene.add(group);
 
-    return b;
-}
+    trees.push(group);
 
-/* =========================
-   JOYSTICK
-========================= */
+    return group;
+  }
 
-const joy = document.createElement("div");
+  function createRock(x, z) {
 
-joy.style.cssText = `
-position:absolute;
-left:35px;
-bottom:35px;
-width:140px;
-height:140px;
-border-radius:50%;
-background:rgba(255,255,255,.15);
-border:2px solid rgba(255,255,255,.3);
-pointer-events:auto;
-touch-action:none;
-`;
+    const rock =
+      new THREE.Mesh(
+        new THREE.DodecahedronGeometry(
+          rnd(1,2),
+          1
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x69757a,
+          roughness:1
+        })
+      );
 
-ui.appendChild(joy);
+    rock.position.set(
+      x,
+      rnd(.4,.9),
+      z
+    );
 
-const stick = document.createElement("div");
+    rock.scale.y = .65;
 
-stick.style.cssText = `
-position:absolute;
-left:40px;
-top:40px;
-width:60px;
-height:60px;
-border-radius:50%;
-background:rgba(255,255,255,.5);
-`;
+    rock.castShadow = true;
+    rock.receiveShadow = true;
 
-joy.appendChild(stick);
+    rock.userData = {
+      type:"rock",
+      hp:3
+    };
 
-let joyPointer = null;
+    scene.add(rock);
 
-joy.onpointerdown = e => {
+    rocks.push(rock);
 
-    joyPointer = e.pointerId;
+    return rock;
+  }
 
-    joy.setPointerCapture(e.pointerId);
+  function createBerryBush(x,z) {
 
-    updateJoy(e);
-};
+    const group =
+      new THREE.Group();
 
-joy.onpointermove = e => {
+    const bush =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          1.15,
+          10,
+          8
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x267c39
+        })
+      );
 
-    if(e.pointerId !== joyPointer) return;
+    bush.position.y = 1;
 
-    updateJoy(e);
-};
+    group.add(bush);
 
-joy.onpointerup =
-joy.onpointercancel = () => {
+    for (
+      let i=0;
+      i<5;
+      i++
+    ) {
+
+      const berry =
+        new THREE.Mesh(
+          new THREE.SphereGeometry(
+            .15,
+            7,
+            6
+          ),
+          new THREE.MeshStandardMaterial({
+            color:0xc73561
+          })
+        );
+
+      berry.position.set(
+        rnd(-.8,.8),
+        rnd(.7,1.4),
+        rnd(-.8,.8)
+      );
+
+      group.add(berry);
+
+    }
+
+    group.position.set(
+      x,
+      0,
+      z
+    );
+
+    group.userData = {
+      type:"berry",
+      used:false
+    };
+
+    scene.add(group);
+
+    berries.push(group);
+
+    return group;
+  }
+
+  function createCoconut(x,z) {
+
+    const coconut =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          .35,
+          10,
+          8
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x6b4726
+        })
+      );
+
+    coconut.position.set(
+      x,
+      .5,
+      z
+    );
+
+    coconut.userData = {
+      type:"coconut",
+      used:false
+    };
+
+    scene.add(coconut);
+
+    coconuts.push(coconut);
+
+    return coconut;
+  }
+
+  /* ---------- GENERATE RESOURCES ---------- */
+
+  for (
+    let i=0;
+    i<170;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI * 2;
+
+    const radius =
+      Math.sqrt(
+        Math.random()
+      ) * 210;
+
+    const x =
+      Math.cos(angle) * radius;
+
+    const z =
+      Math.sin(angle) * radius;
+
+    if (
+      Math.hypot(
+        x + 45,
+        z + 45
+      ) < 75
+    ) {
+      continue;
+    }
+
+    createTree(
+      x,
+      z,
+      rnd(4,7)
+    );
+
+  }
+
+  for (
+    let i=0;
+    i<120;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI * 2;
+
+    const radius =
+      Math.sqrt(
+        Math.random()
+      ) * 220;
+
+    createRock(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius
+    );
+
+  }
+
+  for (
+    let i=0;
+    i<55;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI * 2;
+
+    const radius =
+      Math.sqrt(
+        Math.random()
+      ) * 200;
+
+    createBerryBush(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius
+    );
+
+  }
+
+  for (
+    let i=0;
+    i<40;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI * 2;
+
+    const radius =
+      Math.sqrt(
+        Math.random()
+      ) * 205;
+
+    createCoconut(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius
+    );
+
+  }
+
+  /* ---------- RUINS ---------- */
+
+  const ruins =
+    new THREE.Group();
+
+  for (
+    let i=0;
+    i<14;
+    i++
+  ) {
+
+    const pillar =
+      new THREE.Mesh(
+        new THREE.BoxGeometry(
+          rnd(2,4),
+          rnd(2,6),
+          rnd(1,3)
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x77736a,
+          roughness:1
+        })
+      );
+
+    const angle =
+      i / 14 *
+      Math.PI * 2;
+
+    const radius =
+      105 +
+      rnd(-12,12);
+
+    pillar.position.set(
+      Math.cos(angle) * radius,
+      rnd(1,3),
+      Math.sin(angle) * radius
+    );
+
+    pillar.rotation.y =
+      rnd(0,Math.PI);
+
+    pillar.castShadow = true;
+
+    ruins.add(pillar);
+
+  }
+
+  scene.add(ruins);
+
+  /* ---------- MYSTERY CRYSTAL ---------- */
+
+  const crystal =
+    new THREE.Mesh(
+      new THREE.OctahedronGeometry(
+        2.3
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x5ee7ff,
+        emissive:0x176a88,
+        emissiveIntensity:1.5,
+        roughness:.2,
+        metalness:.3
+      })
+    );
+
+  crystal.position.set(
+    0,
+    2,
+    135
+  );
+
+  crystal.userData.type =
+    "crystal";
+
+  scene.add(crystal);
+
+  /* ---------- RESCUE BEACON ---------- */
+
+  const beacon =
+    new THREE.Group();
+
+  const beaconPole =
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        .4,
+        .5,
+        7,
+        10
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x555b61,
+        metalness:.7
+      })
+    );
+
+  beaconPole.position.y =
+    3.5;
+
+  beacon.add(beaconPole);
+
+  const beaconLamp =
+    new THREE.Mesh(
+      new THREE.SphereGeometry(
+        1.2,
+        16,
+        12
+      ),
+      new THREE.MeshBasicMaterial({
+        color:0xff3b3b
+      })
+    );
+
+  beaconLamp.position.y =
+    7.3;
+
+  beacon.add(beaconLamp);
+
+  beacon.position.set(
+    0,
+    0,
+    160
+  );
+
+  beacon.visible = false;
+
+  scene.add(beacon);
+
+  /* ---------- PLAYER ---------- */
+
+  const player =
+    new THREE.Group();
+
+  const body =
+    new THREE.Mesh(
+      new THREE.CapsuleGeometry(
+        .65,
+        1.4,
+        6,
+        12
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x315edb,
+        roughness:.8
+      })
+    );
+
+  body.position.y =
+    1.5;
+
+  body.castShadow = true;
+
+  player.add(body);
+
+  const head =
+    new THREE.Mesh(
+      new THREE.SphereGeometry(
+        .52,
+        16,
+        12
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0xd39a70,
+        roughness:.9
+      })
+    );
+
+  head.position.y =
+    2.65;
+
+  head.castShadow = true;
+
+  player.add(head);
+
+  const backpack =
+    new THREE.Mesh(
+      new THREE.BoxGeometry(
+        .75,
+        .9,
+        .35
+      ),
+      new THREE.MeshStandardMaterial({
+        color:0x513a24
+      })
+    );
+
+  backpack.position.set(
+    0,
+    1.45,
+    .52
+  );
+
+  backpack.castShadow = true;
+
+  player.add(backpack);
+
+  player.position.set(
+    save.x,
+    0,
+    save.z
+  );
+
+  scene.add(player);
+
+  /* ---------- ANIMALS ---------- */
+
+  const animals = [];
+
+  function createAnimal(
+    x,
+    z,
+    type
+  ) {
+
+    const group =
+      new THREE.Group();
+
+    let color;
+
+    if (
+      type === "boar"
+    ) {
+      color = 0x503426;
+    }
+    else if (
+      type === "crab"
+    ) {
+      color = 0xc45137;
+    }
+    else {
+      color = 0x9b8a58;
+    }
+
+    const animalBody =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          1,
+          12,
+          8
+        ),
+        new THREE.MeshStandardMaterial({
+          color:color,
+          roughness:1
+        })
+      );
+
+    animalBody.scale.set(
+      1.35,
+      .75,
+      .85
+    );
+
+    animalBody.position.y =
+      .8;
+
+    animalBody.castShadow = true;
+
+    group.add(
+      animalBody
+    );
+
+    const animalHead =
+      new THREE.Mesh(
+        new THREE.SphereGeometry(
+          .55,
+          12,
+          8
+        ),
+        new THREE.MeshStandardMaterial({
+          color:color
+        })
+      );
+
+    animalHead.position.set(
+      1,
+      .95,
+      0
+    );
+
+    group.add(
+      animalHead
+    );
+
+    group.position.set(
+      x,
+      0,
+      z
+    );
+
+    group.userData = {
+      type:"animal",
+      animalType:type,
+      hp:20,
+      phase:Math.random()*10
+    };
+
+    scene.add(group);
+
+    animals.push(group);
+
+  }
+
+  for (
+    let i=0;
+    i<18;
+    i++
+  ) {
+
+    const angle =
+      Math.random() *
+      Math.PI * 2;
+
+    const radius =
+      rnd(30,190);
+
+    createAnimal(
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius,
+      Math.random() < .5
+        ? "boar"
+        : "deer"
+    );
+
+  }
+
+  /* ---------- RAIN ---------- */
+
+  const rain =
+    new THREE.Group();
+
+  const rainMaterial =
+    new THREE.LineBasicMaterial({
+      color:0xbde8ff,
+      transparent:true,
+      opacity:.5
+    });
+
+  for (
+    let i=0;
+    i<260;
+    i++
+  ) {
+
+    const geometry =
+      new THREE.BufferGeometry()
+        .setFromPoints([
+          new THREE.Vector3(
+            0,0,0
+          ),
+          new THREE.Vector3(
+            0,-2.5,0
+          )
+        ]);
+
+    const line =
+      new THREE.Line(
+        geometry,
+        rainMaterial
+      );
+
+    line.position.set(
+      rnd(-120,120),
+      rnd(5,70),
+      rnd(-120,120)
+    );
+
+    rain.add(line);
+
+  }
+
+  rain.visible = false;
+
+  scene.add(rain);
+
+  /* ---------- TOUCH INPUT ---------- */
+
+  let joyX = 0;
+  let joyY = 0;
+
+  let runHeld = false;
+  let paused = false;
+
+  let joyPointer = null;
+
+  const joystick =
+    $("joystick");
+
+  const stick =
+    $("stick");
+
+  function moveJoystick(e) {
+
+    const rect =
+      joystick.getBoundingClientRect();
+
+    let x =
+      e.clientX -
+      (
+        rect.left +
+        rect.width / 2
+      );
+
+    let y =
+      e.clientY -
+      (
+        rect.top +
+        rect.height / 2
+      );
+
+    const max =
+      rect.width * .38;
+
+    const length =
+      Math.hypot(x,y);
+
+    if (
+      length > max
+    ) {
+
+      x =
+        x / length * max;
+
+      y =
+        y / length * max;
+
+    }
+
+    joyX =
+      x / max;
+
+    joyY =
+      y / max;
+
+    stick.style.transform =
+      `translate(${x}px,${y}px)`;
+
+  }
+
+  joystick.addEventListener(
+    "pointerdown",
+    e => {
+
+      e.preventDefault();
+
+      audioReady();
+
+      joyPointer =
+        e.pointerId;
+
+      joystick.setPointerCapture(
+        e.pointerId
+      );
+
+      moveJoystick(e);
+
+    }
+  );
+
+  joystick.addEventListener(
+    "pointermove",
+    e => {
+
+      if (
+        e.pointerId ===
+        joyPointer
+      ) {
+
+        moveJoystick(e);
+
+      }
+
+    }
+  );
+
+  function endJoystick(e) {
+
+    if (
+      e.pointerId !==
+      joyPointer
+    ) return;
 
     joyPointer = null;
 
     joyX = 0;
     joyY = 0;
 
-    stick.style.left = "40px";
-    stick.style.top = "40px";
-};
+    stick.style.transform =
+      "translate(0,0)";
 
-function updateJoy(e) {
+  }
 
-    const r = joy.getBoundingClientRect();
+  joystick.addEventListener(
+    "pointerup",
+    endJoystick
+  );
 
-    let x =
+  joystick.addEventListener(
+    "pointercancel",
+    endJoystick
+  );
+
+  /* ---------- BUTTONS ---------- */
+
+  $("run").addEventListener(
+    "pointerdown",
+    e => {
+
+      e.preventDefault();
+
+      audioReady();
+
+      runHeld = true;
+
+    }
+  );
+
+  [
+    "pointerup",
+    "pointercancel",
+    "pointerleave"
+  ].forEach(
+    eventName => {
+
+      $("run").addEventListener(
+        eventName,
+        () => {
+          runHeld = false;
+        }
+      );
+
+    }
+  );
+
+  $("jump").addEventListener(
+    "pointerdown",
+    e => {
+
+      e.preventDefault();
+
+      audioReady();
+
+      jump();
+
+    }
+  );
+
+  $("act").addEventListener(
+    "pointerdown",
+    e => {
+
+      e.preventDefault();
+
+      audioReady();
+
+      action();
+
+    }
+  );
+
+  $("menu").addEventListener(
+    "pointerdown",
+    e => {
+
+      e.preventDefault();
+
+      audioReady();
+
+      openMenu();
+
+    }
+  );
+
+  /* ---------- CAMERA TOUCH ---------- */
+
+  let cameraYaw = 0;
+  let cameraPitch = .48;
+
+  let cameraPointer = null;
+
+  let lastCameraX = 0;
+  let lastCameraY = 0;
+
+  renderer.domElement.addEventListener(
+    "pointerdown",
+    e => {
+
+      if (
+        e.clientX <
+        innerWidth * .42
+      ) return;
+
+      if (paused) return;
+
+      cameraPointer =
+        e.pointerId;
+
+      lastCameraX =
+        e.clientX;
+
+      lastCameraY =
+        e.clientY;
+
+      renderer.domElement.setPointerCapture(
+        e.pointerId
+      );
+
+    }
+  );
+
+  renderer.domElement.addEventListener(
+    "pointermove",
+    e => {
+
+      if (
+        e.pointerId !==
+        cameraPointer
+      ) return;
+
+      const dx =
         e.clientX -
-        (r.left + r.width/2);
+        lastCameraX;
 
-    let y =
+      const dy =
         e.clientY -
-        (r.top + r.height/2);
-
-    const max = 42;
-
-    const len = Math.sqrt(x*x+y*y);
-
-    if(len > max) {
-
-        x = x/len*max;
-        y = y/len*max;
-    }
-
-    joyX = x/max;
-    joyY = y/max;
-
-    stick.style.left =
-        `${40+x}px`;
-
-    stick.style.top =
-        `${40+y}px`;
-}
-
-/* =========================
-   ACTION BUTTONS
-========================= */
-
-button("🪓",120,95,gather);
-button("🍖",35,180,eat);
-button("🔥",120,180,cook);
-button("🏕️",205,95,buildShelter);
-
-/* =========================
-   MESSAGE
-========================= */
-
-const message = document.createElement("div");
-
-message.style.cssText = `
-position:absolute;
-top:50%;
-left:50%;
-transform:translate(-50%,-50%);
-padding:15px 25px;
-border-radius:15px;
-background:rgba(0,0,0,.7);
-color:white;
-font-size:18px;
-font-weight:bold;
-display:none;
-text-align:center;
-`;
-
-ui.appendChild(message);
-
-let msgTimer = 0;
-
-function toast(text) {
-
-    message.textContent = text;
-    message.style.display = "block";
-
-    clearTimeout(msgTimer);
-
-    msgTimer = setTimeout(() => {
-        message.style.display = "none";
-    },1800);
-}
-
-/* =========================
-   FIND RESOURCE
-========================= */
-
-function nearestResource() {
-
-    let best = null;
-    let dist = Infinity;
-
-    for(const r of resources) {
-
-        if(!r.visible) continue;
-
-        const d =
-            player.position.distanceTo(r.position);
-
-        if(d < dist) {
-
-            dist = d;
-            best = r;
-        }
-    }
-
-    return {
-        object:best,
-        distance:dist
-    };
-}
-
-/* =========================
-   GATHER
-========================= */
-
-function gather() {
-
-    const n = nearestResource();
-
-    if(!n.object || n.distance > 4) {
-
-        toast("Dekati resource dulu");
-        return;
-    }
-
-    const o = n.object;
-
-    if(o.userData.type === "tree") {
-
-        o.userData.hp--;
-
-        toast("🪵 Menebang pohon");
-
-        if(o.userData.hp <= 0) {
-
-            o.visible = false;
-
-            save.wood += 4;
-
-            toast("🪵 +4 Kayu");
-        }
-    }
-
-    else if(o.userData.type === "rock") {
-
-        o.userData.hp--;
-
-        if(o.userData.hp <= 0) {
-
-            o.visible = false;
-
-            save.stone += 3;
-
-            toast("🪨 +3 Batu");
-        }
-    }
-
-    else if(o.userData.type === "berry") {
-
-        o.visible = false;
-
-        save.berry += 3;
-
-        toast("🫐 +3 Berry");
-    }
-
-    saveGame();
-    updateHUD();
-}
-
-/* =========================
-   EAT
-========================= */
-
-function eat() {
-
-    if(save.berry <= 0) {
-
-        toast("Tidak punya berry");
-        return;
-    }
-
-    save.berry--;
-
-    save.hunger =
-        Math.min(100,save.hunger+18);
-
-    toast("🫐 Makan berry");
-
-    saveGame();
-    updateHUD();
-}
-
-/* =========================
-   CAMPFIRE
-========================= */
-
-function buildCampfire() {
-
-    if(save.campfire) return;
-
-    if(save.wood < 5 ||
-       save.stone < 3) {
-
-        toast("Butuh 5 kayu + 3 batu");
-        return;
-    }
-
-    save.wood -= 5;
-    save.stone -= 3;
-    save.campfire = true;
-
-    const fire = new THREE.Group();
-
-    for(let i=0;i<5;i++) {
-
-        const log = new THREE.Mesh(
-            new THREE.CylinderGeometry(
-                .16,.2,1.3,6
-            ),
-            new THREE.MeshLambertMaterial({
-                color:0x643b20
-            })
+        lastCameraY;
+
+      lastCameraX =
+        e.clientX;
+
+      lastCameraY =
+        e.clientY;
+
+      cameraYaw -=
+        dx *
+        save.settings.sensitivity;
+
+      const invert =
+        save.settings.invertY
+          ? 1
+          : -1;
+
+      cameraPitch +=
+        dy *
+        save.settings.sensitivity *
+        invert;
+
+      cameraPitch =
+        clamp(
+          cameraPitch,
+          .12,
+          1.05
         );
 
-        log.rotation.z =
-            Math.PI/2;
+    }
+  );
 
-        log.rotation.y =
-            i*.7;
+  [
+    "pointerup",
+    "pointercancel"
+  ].forEach(
+    eventName => {
 
-        log.position.y=.25;
+      renderer.domElement.addEventListener(
+        eventName,
+        e => {
 
-        fire.add(log);
+          if (
+            e.pointerId ===
+            cameraPointer
+          ) {
+
+            cameraPointer =
+              null;
+
+          }
+
+        }
+      );
+
+    }
+  );
+   /* =========================
+   CAMERA POINTER END
+========================= */
+
+renderer.domElement.addEventListener("pointerup", e => {
+  cameraDragging = false;
+  try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (_) {}
+});
+
+renderer.domElement.addEventListener("pointercancel", () => {
+  cameraDragging = false;
+});
+
+renderer.domElement.addEventListener("pointerleave", () => {
+  cameraDragging = false;
+});
+
+/* =========================
+   GAME STATE
+========================= */
+
+let gameOver = false;
+let paused = false;
+let ending = false;
+let lastTime = performance.now();
+
+let stats = {
+  hunger: 100,
+  thirst: 100,
+  health: 100,
+  stamina: 100,
+
+  wood: 0,
+  stone: 0,
+  berries: 0,
+  coconut: 0,
+  fish: 0,
+  cookedFish: 0,
+
+  day: 1,
+  kills: 0,
+  trees: 0,
+  rocks: 0,
+  fishCaught: 0,
+
+  chapter: 1,
+  beaconBuilt: false,
+  endingSeen: false
+};
+
+let highScore = Number(localStorage.getItem("valen_highscore") || 0);
+let score = 0;
+
+const inventory = {
+  wood: 0,
+  stone: 0,
+  berries: 0,
+  coconut: 0,
+  fish: 0,
+  cookedFish: 0
+};
+
+/* =========================
+   SAVE / LOAD
+========================= */
+
+function syncInventory() {
+  stats.wood = inventory.wood;
+  stats.stone = inventory.stone;
+  stats.berries = inventory.berries;
+  stats.coconut = inventory.coconut;
+  stats.fish = inventory.fish;
+  stats.cookedFish = inventory.cookedFish;
+}
+
+function saveGame() {
+  syncInventory();
+
+  const data = {
+    stats,
+    player: {
+      x: player.position.x,
+      y: player.position.y,
+      z: player.position.z
+    },
+    score,
+    highScore,
+    cameraYaw,
+    cameraPitch
+  };
+
+  localStorage.setItem("valen_island_save", JSON.stringify(data));
+  toast("GAME TERSIMPAN");
+}
+
+function loadGame() {
+  const raw = localStorage.getItem("valen_island_save");
+
+  if (!raw) {
+    toast("BELUM ADA SAVE");
+    return;
+  }
+
+  try {
+    const data = JSON.parse(raw);
+
+    if (data.stats) {
+      Object.assign(stats, data.stats);
     }
 
-    const flame = new THREE.Mesh(
-        new THREE.ConeGeometry(
-            .5,
-            1.5,
-            8
-        ),
-        new THREE.MeshBasicMaterial({
-            color:0xff7b16
-        })
-    );
+    inventory.wood = stats.wood || 0;
+    inventory.stone = stats.stone || 0;
+    inventory.berries = stats.berries || 0;
+    inventory.coconut = stats.coconut || 0;
+    inventory.fish = stats.fish || 0;
+    inventory.cookedFish = stats.cookedFish || 0;
 
-    flame.position.y=1;
+    if (data.player) {
+      player.position.set(
+        Number(data.player.x) || 0,
+        0,
+        Number(data.player.z) || 0
+      );
+    }
 
-    fire.add(flame);
+    score = Number(data.score || 0);
+    highScore = Math.max(highScore, Number(data.highScore || 0));
 
-    fire.position.copy(player.position);
+    if (typeof data.cameraYaw === "number") {
+      cameraYaw = data.cameraYaw;
+    }
 
-    scene.add(fire);
-    buildings.push(fire);
+    if (typeof data.cameraPitch === "number") {
+      cameraPitch = data.cameraPitch;
+    }
 
-    toast("🔥 Api unggun dibuat");
+    updateUI();
+    toast("SAVE DIMUAT");
+  } catch (err) {
+    console.error(err);
+    toast("SAVE RUSAK");
+  }
+}
 
-    saveGame();
-    updateHUD();
+function resetSave() {
+  localStorage.removeItem("valen_island_save");
+  toast("SAVE DIHAPUS");
 }
 
 /* =========================
-   COOK
+   AUTOSAVE
 ========================= */
 
-function cook() {
+setInterval(() => {
+  if (!gameOver && !paused) {
+    syncInventory();
 
-    if(!save.campfire) {
+    const data = {
+      stats,
+      player: {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z
+      },
+      score,
+      highScore,
+      cameraYaw,
+      cameraPitch
+    };
 
-        buildCampfire();
-        return;
-    }
+    localStorage.setItem("valen_island_save", JSON.stringify(data));
+  }
+}, 15000);
 
-    if(save.fish <= 0) {
+/* =========================
+   UI HELPERS
+========================= */
 
-        toast("Belum punya ikan");
-        return;
-    }
+function toast(message) {
+  let el = document.getElementById("toast");
 
-    save.fish--;
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
 
-    save.cooked++;
+    Object.assign(el.style, {
+      position: "fixed",
+      left: "50%",
+      top: "12%",
+      transform: "translateX(-50%)",
+      padding: "12px 20px",
+      borderRadius: "14px",
+      background: "rgba(0,0,0,.75)",
+      color: "#fff",
+      fontWeight: "800",
+      fontSize: "15px",
+      zIndex: "100",
+      pointerEvents: "none",
+      opacity: "0",
+      transition: "opacity .2s"
+    });
 
-    toast("🍖 Ikan dimasak");
+    document.body.appendChild(el);
+  }
 
-    saveGame();
-    updateHUD();
+  el.textContent = message;
+  el.style.opacity = "1";
+
+  clearTimeout(el._timer);
+
+  el._timer = setTimeout(() => {
+    el.style.opacity = "0";
+  }, 1600);
+}
+
+function flashDamage() {
+  let flash = document.getElementById("damageFlash");
+
+  if (!flash) {
+    flash = document.createElement("div");
+    flash.id = "damageFlash";
+
+    Object.assign(flash.style, {
+      position: "fixed",
+      inset: "0",
+      background: "rgba(255,0,0,.18)",
+      pointerEvents: "none",
+      zIndex: "90",
+      opacity: "0",
+      transition: "opacity .12s"
+    });
+
+    document.body.appendChild(flash);
+  }
+
+  flash.style.opacity = "1";
+
+  setTimeout(() => {
+    flash.style.opacity = "0";
+  }, 120);
 }
 
 /* =========================
-   EAT COOKED
+   HUD
 ========================= */
 
-function eatCooked() {
+const hud = document.createElement("div");
 
-    if(save.cooked <= 0) {
+Object.assign(hud.style, {
+  position: "fixed",
+  left: "18px",
+  top: "15px",
+  zIndex: "20",
+  color: "#fff",
+  fontFamily: "Arial,sans-serif",
+  pointerEvents: "none",
+  textShadow: "0 2px 4px #000"
+});
 
-        toast("Tidak ada makanan");
-        return;
-    }
+hud.innerHTML = `
+  <div id="gameTitle"
+       style="
+       font-size:18px;
+       font-weight:900;
+       letter-spacing:1px;
+       margin-bottom:8px;">
+       VALEN ISLAND
+  </div>
 
-    save.cooked--;
+  <div id="statsPanel"
+       style="
+       width:230px;
+       padding:10px;
+       border-radius:14px;
+       background:rgba(0,0,0,.42);
+       backdrop-filter:blur(8px);">
 
-    save.hunger =
-        Math.min(100,save.hunger+35);
+    <div id="bars"></div>
 
-    save.health =
-        Math.min(100,save.health+8);
+    <div id="resources"
+         style="
+         margin-top:8px;
+         font-size:13px;
+         line-height:1.6;">
+    </div>
 
-    toast("🍖 Makan ikan matang");
+    <div id="scoreText"
+         style="
+         margin-top:5px;
+         font-size:13px;
+         font-weight:bold;">
+    </div>
+  </div>
+`;
 
-    saveGame();
-    updateHUD();
+document.body.appendChild(hud);
+
+function bar(name, value, symbol) {
+  const pct = Math.max(0, Math.min(100, value));
+
+  return `
+    <div style="
+      display:flex;
+      align-items:center;
+      gap:6px;
+      margin:4px 0;
+    ">
+      <span style="width:18px">${symbol}</span>
+
+      <div style="
+        flex:1;
+        height:9px;
+        border-radius:8px;
+        background:rgba(255,255,255,.18);
+        overflow:hidden;
+      ">
+        <div style="
+          width:${pct}%;
+          height:100%;
+          border-radius:8px;
+          background:rgba(255,255,255,.9);
+        "></div>
+      </div>
+
+      <span style="
+        width:34px;
+        text-align:right;
+        font-size:11px;
+      ">${Math.round(pct)}</span>
+    </div>
+  `;
+}
+
+function updateUI() {
+  const bars = document.getElementById("bars");
+  const resources = document.getElementById("resources");
+  const scoreText = document.getElementById("scoreText");
+
+  if (!bars) return;
+
+  bars.innerHTML =
+    bar("Health", stats.health, "❤️") +
+    bar("Hunger", stats.hunger, "🍖") +
+    bar("Thirst", stats.thirst, "💧") +
+    bar("Stamina", stats.stamina, "⚡");
+
+  resources.innerHTML = `
+    🪵 Kayu: ${inventory.wood}
+    &nbsp; 🪨 Batu: ${inventory.stone}<br>
+
+    🍓 Berry: ${inventory.berries}
+    &nbsp; 🥥 Kelapa: ${inventory.coconut}<br>
+
+    🐟 Ikan: ${inventory.fish}
+    &nbsp; 🍳 Matang: ${inventory.cookedFish}
+  `;
+
+  scoreText.innerHTML =
+    `⭐ Skor: ${Math.floor(score)} &nbsp; 🏆 High: ${Math.floor(highScore)}`;
 }
 
 /* =========================
-   BUILD SHELTER
+   CHAPTER UI
 ========================= */
 
-function buildShelter() {
+const questBox = document.createElement("div");
 
-    if(save.shelter) {
+Object.assign(questBox.style, {
+  position: "fixed",
+  right: "18px",
+  top: "18px",
+  width: "250px",
+  padding: "12px 14px",
+  borderRadius: "15px",
+  background: "rgba(0,0,0,.38)",
+  color: "#fff",
+  zIndex: "20",
+  fontFamily: "Arial,sans-serif",
+  pointerEvents: "none",
+  backdropFilter: "blur(8px)",
+  textShadow: "0 2px 3px #000"
+});
 
-        toast("🏕️ Shelter sudah ada");
-        return;
+questBox.innerHTML = `
+  <div style="
+    font-size:11px;
+    opacity:.7;
+    letter-spacing:1px;">
+    CHAPTER
+  </div>
+
+  <div id="chapterName"
+       style="
+       font-size:17px;
+       font-weight:900;
+       margin-top:3px;">
+  </div>
+
+  <div id="questText"
+       style="
+       margin-top:6px;
+       font-size:12px;
+       line-height:1.5;">
+  </div>
+`;
+
+document.body.appendChild(questBox);
+
+const chapters = [
+  {
+    name: "Pantai Asing",
+    quest: "Kumpulkan 10 kayu dan 5 batu."
+  },
+  {
+    name: "Bertahan Hidup",
+    quest: "Buat api unggun dan temukan makanan."
+  },
+  {
+    name: "Jejak Misterius",
+    quest: "Temukan reruntuhan kuno di pulau."
+  },
+  {
+    name: "Kristal Pulau",
+    quest: "Temukan kristal misterius."
+  },
+  {
+    name: "Sinyal Penyelamatan",
+    quest: "Aktifkan beacon untuk mengirim sinyal."
+  }
+];
+
+function updateQuest() {
+  const chapter = Math.max(
+    1,
+    Math.min(chapters.length, stats.chapter)
+  );
+
+  document.getElementById("chapterName").textContent =
+    `${chapter} — ${chapters[chapter - 1].name}`;
+
+  document.getElementById("questText").textContent =
+    chapters[chapter - 1].quest;
+}
+
+/* =========================
+   MINIMAP
+========================= */
+
+const minimap = document.createElement("canvas");
+
+minimap.width = 180;
+minimap.height = 180;
+
+Object.assign(minimap.style, {
+  position: "fixed",
+  right: "18px",
+  bottom: "18px",
+  width: "150px",
+  height: "150px",
+  borderRadius: "50%",
+  border: "3px solid rgba(255,255,255,.75)",
+  background: "rgba(0,40,50,.55)",
+  zIndex: "20",
+  pointerEvents: "none"
+});
+
+document.body.appendChild(minimap);
+
+const mapCtx = minimap.getContext("2d");
+
+function drawMinimap() {
+  const w = minimap.width;
+  const h = minimap.height;
+
+  mapCtx.clearRect(0, 0, w, h);
+
+  mapCtx.fillStyle = "#07566a";
+  mapCtx.fillRect(0, 0, w, h);
+
+  const cx = w / 2;
+  const cy = h / 2;
+
+  const scale = 0.25;
+
+  mapCtx.beginPath();
+
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+
+    const rr =
+      ISLAND * scale *
+      (0.93 + Math.sin(a * 3.0) * 0.04);
+
+    const x = cx + Math.cos(a) * rr;
+    const y = cy + Math.sin(a) * rr;
+
+    if (i === 0) mapCtx.moveTo(x, y);
+    else mapCtx.lineTo(x, y);
+  }
+
+  mapCtx.closePath();
+
+  mapCtx.fillStyle = "#3e8f45";
+  mapCtx.fill();
+
+  mapCtx.strokeStyle = "#e2c27c";
+  mapCtx.lineWidth = 5;
+  mapCtx.stroke();
+
+  // player
+  mapCtx.save();
+
+  mapCtx.translate(
+    cx,
+    cy
+  );
+
+  mapCtx.rotate(-cameraYaw);
+
+  mapCtx.beginPath();
+  mapCtx.moveTo(0, -10);
+  mapCtx.lineTo(6, 7);
+  mapCtx.lineTo(-6, 7);
+  mapCtx.closePath();
+
+  mapCtx.fillStyle = "#ffffff";
+  mapCtx.fill();
+
+  mapCtx.restore();
+
+  // beacon
+  if (stats.beaconBuilt || ending) {
+    const bx = cx;
+    const bz = cy - 160 * scale;
+
+    mapCtx.beginPath();
+    mapCtx.arc(bx, bz, 5, 0, Math.PI * 2);
+    mapCtx.fillStyle = "#fff";
+    mapCtx.fill();
+  }
+}
+
+/* =========================
+   INVENTORY ACTIONS
+========================= */
+
+function addResource(type, amount = 1) {
+  if (!(type in inventory)) return;
+
+  inventory[type] += amount;
+
+  score += amount * 2;
+
+  if (score > highScore) {
+    highScore = Math.floor(score);
+    localStorage.setItem("valen_highscore", highScore);
+  }
+
+  updateUI();
+}
+
+function damagePlayer(amount) {
+  if (gameOver) return;
+
+  stats.health -= amount;
+
+  if (stats.health < 0) {
+    stats.health = 0;
+  }
+
+  flashDamage();
+
+  shakeCamera(0.25);
+
+  if (stats.health <= 0) {
+    endGame();
+  }
+
+  updateUI();
+}
+
+function healPlayer(amount) {
+  stats.health = Math.min(100, stats.health + amount);
+  updateUI();
+}
+
+function eatBerry() {
+  if (inventory.berries <= 0) {
+    toast("BERRY HABIS");
+    return;
+  }
+
+  inventory.berries--;
+
+  stats.hunger = Math.min(
+    100,
+    stats.hunger + 15
+  );
+
+  healPlayer(3);
+
+  toast("+ MAKANAN");
+
+  updateUI();
+}
+
+function drinkCoconut() {
+  if (inventory.coconut <= 0) {
+    toast("KELAPA HABIS");
+    return;
+  }
+
+  inventory.coconut--;
+
+  stats.thirst = Math.min(
+    100,
+    stats.thirst + 25
+  );
+
+  toast("+ AIR KELAPA");
+
+  updateUI();
+}
+
+function eatCookedFish() {
+  if (inventory.cookedFish <= 0) {
+    toast("IKAN MATANG HABIS");
+    return;
+  }
+
+  inventory.cookedFish--;
+
+  stats.hunger = Math.min(
+    100,
+    stats.hunger + 35
+  );
+
+  stats.health = Math.min(
+    100,
+    stats.health + 10
+  );
+
+  toast("+ IKAN MATANG");
+
+  updateUI();
+}
+
+/* =========================
+   GATHERING
+========================= */
+
+function getNearestObject(list, maxDistance) {
+  let nearest = null;
+  let nearestDistance = maxDistance;
+
+  for (const item of list) {
+    if (!item || !item.mesh) continue;
+
+    const dx =
+      item.mesh.position.x -
+      player.position.x;
+
+    const dz =
+      item.mesh.position.z -
+      player.position.z;
+
+    const d = Math.sqrt(dx * dx + dz * dz);
+
+    if (d < nearestDistance) {
+      nearestDistance = d;
+      nearest = item;
     }
+  }
 
-    if(save.wood < 12 ||
-       save.stone < 5) {
+  return nearest;
+}
 
-        toast("Butuh 12 kayu + 5 batu");
-        return;
-    }
+function gatherWood() {
+  const target = getNearestObject(trees, 5);
 
-    save.wood -= 12;
-    save.stone -= 5;
-    save.shelter = true;
+  if (!target) {
+    toast("DEKATI POHON");
+    return;
+  }
 
-    const g = new THREE.Group();
+  if (target.dead) {
+    toast("POHON SUDAH TUMBANG");
+    return;
+  }
 
-    const floor = new THREE.Mesh(
-        new THREE.BoxGeometry(5,.3,5),
-        new THREE.MeshLambertMaterial({
-            color:0x69452b
-        })
-    );
+  target.hp--;
 
-    floor.position.y=.3;
-    g.add(floor);
+  chopSound();
 
-    const roof = new THREE.Mesh(
-        new THREE.ConeGeometry(
-            3.7,
-            2.5,
-            4
-        ),
-        new THREE.MeshLambertMaterial({
-            color:0x81472d
-        })
-    );
+  shakeCamera(0.06);
 
-    roof.position.y=3.5;
-    roof.rotation.y=Math.PI/4;
-    g.add(roof);
+  if (target.hp <= 0) {
+    target.dead = true;
 
-    g.position.copy(player.position);
-    scene.add(g);
+    target.mesh.rotation.z =
+      (Math.random() > .5 ? 1 : -1) * 1.1;
 
-    buildings.push(g);
+    target.mesh.position.y = 1;
 
-    toast("🏕️ Shelter berhasil dibuat");
+    addResource("wood", 4);
 
-    saveGame();
-    updateHUD();
+    stats.trees++;
+
+    toast("+4 KAYU");
+
+    setTimeout(() => {
+      if (!target.mesh.parent) return;
+
+      target.mesh.visible = true;
+      target.mesh.rotation.z = 0;
+      target.mesh.position.y = 0;
+      target.dead = false;
+      target.hp = 3;
+    }, 30000);
+  } else {
+    addResource("wood", 1);
+    toast("+1 KAYU");
+  }
+}
+
+function gatherStone() {
+  const target = getNearestObject(rocks, 5);
+
+  if (!target) {
+    toast("DEKATI BATU");
+    return;
+  }
+
+  if (target.dead) return;
+
+  target.hp--;
+
+  stoneSound();
+
+  if (target.hp <= 0) {
+    target.dead = true;
+    target.mesh.visible = false;
+
+    addResource("stone", 3);
+
+    stats.rocks++;
+
+    toast("+3 BATU");
+
+    setTimeout(() => {
+      target.hp = 3;
+      target.dead = false;
+      target.mesh.visible = true;
+    }, 30000);
+  } else {
+    addResource("stone", 1);
+    toast("+1 BATU");
+  }
+}
+
+function gatherBerry() {
+  const target = getNearestObject(
+    berryBushes,
+    4
+  );
+
+  if (!target) {
+    toast("CARI SEMAK BERRY");
+    return;
+  }
+
+  if (target.cooldown) {
+    toast("BELUM TUMBUH");
+    return;
+  }
+
+  target.cooldown = true;
+
+  target.mesh.visible = false;
+
+  addResource("berries", 3);
+
+  toast("+3 BERRY");
+
+  setTimeout(() => {
+    target.cooldown = false;
+    target.mesh.visible = true;
+  }, 20000);
+}
+
+function gatherCoconut() {
+  const target = getNearestObject(
+    coconuts,
+    4
+  );
+
+  if (!target) {
+    toast("CARI KELAPA");
+    return;
+  }
+
+  if (target.cooldown) return;
+
+  target.cooldown = true;
+  target.mesh.visible = false;
+
+  addResource("coconut", 1);
+
+  toast("+1 KELAPA");
+
+  setTimeout(() => {
+    target.cooldown = false;
+    target.mesh.visible = true;
+  }, 25000);
 }
 
 /* =========================
    FISHING
 ========================= */
 
+let fishingCooldown = false;
+
 function fish() {
+  if (fishingCooldown) return;
 
-    const r =
-        Math.sqrt(
-            player.position.x**2 +
-            player.position.z**2
-        );
+  const radius = Math.sqrt(
+    player.position.x ** 2 +
+    player.position.z ** 2
+  );
 
-    if(r < CFG.island-8) {
+  if (radius < BEACH * 0.72) {
+    toast("PERGI KE TEPI PANTAI");
+    return;
+  }
 
-        toast("🎣 Dekati pantai");
-        return;
+  fishingCooldown = true;
+
+  toast("🎣 MEMANCING...");
+
+  fishingSound();
+
+  setTimeout(() => {
+    fishingCooldown = false;
+
+    const chance = Math.random();
+
+    if (chance < .58) {
+      addResource("fish", 1);
+      stats.fishCaught++;
+      toast("🐟 IKAN TERTANGKAP!");
+      return;
     }
 
-    if(Math.random() < .65) {
-
-        save.fish++;
-
-        toast("🎣 Dapat ikan!");
-    } else {
-
-        toast("🐟 Ikan lolos");
+    if (chance < .82) {
+      addResource("fish", 2);
+      stats.fishCaught += 2;
+      toast("🐟🐟 DAPAT 2 IKAN!");
+      return;
     }
 
-    saveGame();
-    updateHUD();
+    if (chance < .96) {
+      addResource("fish", 3);
+      stats.fishCaught += 3;
+      toast("✨ IKAN LANGKA!");
+      score += 50;
+      return;
+    }
+
+    addResource("fish", 5);
+    stats.fishCaught += 5;
+    score += 100;
+    toast("💎 IKAN LEGENDARIS!");
+  }, 1800);
 }
 
 /* =========================
-   FISH BUTTON
+   CRAFTING
 ========================= */
 
-button("🎣",35,95,fish);
+function craftCampfire() {
+  if (
+    inventory.wood < 5 ||
+    inventory.stone < 3
+  ) {
+    toast("BUTUH 5 KAYU + 3 BATU");
+    return;
+  }
 
-/* =========================
-   EXTRA FOOD BUTTON
-========================= */
+  inventory.wood -= 5;
+  inventory.stone -= 3;
 
-button("🍖",35,280,eatCooked);
+  createCampfire(
+    player.position.x,
+    player.position.z
+  );
 
-/* =========================
-   HUD
-========================= */
+  toast("🔥 API UNGGUN DIBUAT");
 
-function bar(value) {
+  if (stats.chapter === 1) {
+    stats.chapter = 2;
+    updateQuest();
+  }
 
-    const pct =
-        Math.max(0,Math.min(100,value));
-
-    return `
-    <div style="
-    width:100%;
-    height:8px;
-    background:#222;
-    border-radius:5px;
-    margin:3px 0 6px">
-        <div style="
-        width:${pct}%;
-        height:100%;
-        background:#fff;
-        border-radius:5px">
-        </div>
-    </div>`;
+  updateUI();
 }
 
-function updateHUD() {
+function craftShelter() {
+  if (
+    inventory.wood < 12 ||
+    inventory.stone < 6
+  ) {
+    toast("BUTUH 12 KAYU + 6 BATU");
+    return;
+  }
 
-    stats.innerHTML = `
-    ❤️ Health ${Math.round(save.health)}
-    ${bar(save.health)}
+  inventory.wood -= 12;
+  inventory.stone -= 6;
 
-    🍗 Hunger ${Math.round(save.hunger)}
-    ${bar(save.hunger)}
+  createShelter(
+    player.position.x,
+    player.position.z
+  );
 
-    💧 Thirst ${Math.round(save.thirst)}
-    ${bar(save.thirst)}
+  toast("🏕️ TEMPAT BERTEDUH DIBUAT");
 
-    ⚡ Stamina ${Math.round(save.stamina)}
-    ${bar(save.stamina)}
-    `;
-
-    resourcesUI.innerHTML = `
-    🪵 ${save.wood}
-    &nbsp; 🪨 ${save.stone}
-    &nbsp; 🫐 ${save.berry}
-    <br>
-    🥥 ${save.coconut}
-    &nbsp; 🐟 ${save.fish}
-    &nbsp; 🍖 ${save.cooked}
-    <br>
-    📅 Day ${save.day}
-    &nbsp; ${String(Math.floor(save.time)).padStart(2,"0")}:00
-    `;
+  updateUI();
 }
 
-updateHUD();
+function cookFish() {
+  if (inventory.fish <= 0) {
+    toast("TIDAK ADA IKAN");
+    return;
+  }
+
+  inventory.fish--;
+  inventory.cookedFish++;
+
+  toast("🍳 IKAN DIMASAK");
+
+  updateUI();
+}
 
 /* =========================
-   CAMERA TOUCH
+   BUILDINGS
 ========================= */
 
-let cameraPointer = null;
-let lastPX = 0;
-let lastPY = 0;
+const structures = [];
 
-canvas.addEventListener("pointerdown",e => {
+function createCampfire(x, z) {
+  const g = new THREE.Group();
 
-    if(e.clientX < innerWidth*.42)
-        return;
+  for (let i = 0; i < 6; i++) {
+    const log = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        .12,
+        .12,
+        1.1,
+        8
+      ),
+      new THREE.MeshStandardMaterial({
+        color: 0x6b3922
+      })
+    );
 
-    cameraPointer = e.pointerId;
+    log.rotation.z = Math.PI / 2;
 
-    lastPX = e.clientX;
-    lastPY = e.clientY;
+    log.rotation.y =
+      i * Math.PI / 3;
 
-    canvas.setPointerCapture(e.pointerId);
-});
+    g.add(log);
+  }
 
-canvas.addEventListener("pointermove",e => {
+  const fire = new THREE.Mesh(
+    new THREE.ConeGeometry(
+      .42,
+      .9,
+      10
+    ),
+    new THREE.MeshBasicMaterial({
+      color: 0xff7a00
+    })
+  );
 
-    if(e.pointerId !== cameraPointer)
-        return;
+  fire.position.y = .55;
+  g.add(fire);
+
+  const light = new THREE.PointLight(
+    0xff8a22,
+    2.2,
+    10
+  );
+
+  light.position.y = 1.2;
+  g.add(light);
+
+  g.position.set(x, .15, z);
+
+  world.add(g);
+
+  structures.push({
+    type: "campfire",
+    group: g,
+    fire,
+    light
+  });
+}
+
+function createShelter(x, z) {
+  const g = new THREE.Group();
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x76502d
+  });
+
+  const posts = [
+    [-2, 1.4, -2],
+    [2, 1.4, -2],
+    [-2, 1.4, 2],
+    [2, 1.4, 2]
+  ];
+
+  for (const p of posts) {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        .12,
+        .16,
+        2.8,
+        8
+      ),
+      mat
+    );
+
+    post.position.set(
+      p[0],
+      p[1],
+      p[2]
+    );
+
+    g.add(post);
+  }
+
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      5,
+      .2,
+      5
+    ),
+    new THREE.MeshStandardMaterial({
+      color: 0x4b321d
+    })
+  );
+
+  roof.position.y = 2.8;
+  roof.rotation.z = .1;
+
+  g.add(roof);
+
+  const floor = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      4.6,
+      .15,
+      4.6
+    ),
+    new THREE.MeshStandardMaterial({
+      color: 0x806039
+    })
+  );
+
+  floor.position.y = .1;
+
+  g.add(floor);
+
+  g.position.set(x, 0, z);
+
+  world.add(g);
+
+  structures.push({
+    type: "shelter",
+    group: g
+  });
+}
+
+/* =========================
+   COOKING CHECK
+========================= */
+
+function nearestCampfire() {
+  let best = null;
+  let bestD = 6;
+
+  for (const s of structures) {
+    if (s.type !== "campfire") continue;
 
     const dx =
-        e.clientX-lastPX;
+      s.group.position.x -
+      player.position.x;
 
-    const dy =
-        e.clientY-lastPY;
+    const dz =
+      s.group.position.z -
+      player.position.z;
 
-    yaw += dx*.006;
+    const d = Math.hypot(dx, dz);
 
-    pitch += dy*.004;
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
 
-    pitch =
-        Math.max(-.1,Math.min(1.1,pitch));
-
-    lastPX=e.clientX;
-    lastPY=e.clientY;
-});
-
-canvas.addEventListener("pointerup",() => {
-    cameraPointer=null;
-});
-
-canvas.addEventListener("pointercancel",() => {
-    cameraPointer=null;
-});
+  return best;
+}
 
 /* =========================
-   MOVEMENT
+   COMBAT
 ========================= */
 
-function movePlayer(dt) {
+let attackCooldown = false;
 
-    const ax = joyX;
-    const ay = joyY;
+function attack() {
+  if (attackCooldown || gameOver) return;
 
-    moving =
-        Math.abs(ax)>.08 ||
-        Math.abs(ay)>.08;
+  attackCooldown = true;
 
-    if(!moving) return;
+  attackSound();
 
-    const speed =
-        running && save.stamina>0
-        ? 9
-        : 5;
+  const target = animals.find(a => {
+    if (!a.alive) return false;
 
-    if(running)
-        save.stamina =
-            Math.max(
-                0,
-                save.stamina-dt*15
-            );
-    else
-        save.stamina =
-            Math.min(
-                100,
-                save.stamina+dt*8
-            );
+    const dx =
+      a.mesh.position.x -
+      player.position.x;
 
-    const forward =
-        new THREE.Vector3(
-            Math.sin(yaw),
-            0,
-            Math.cos(yaw)
-        );
+    const dz =
+      a.mesh.position.z -
+      player.position.z;
 
-    const right =
-        new THREE.Vector3(
-            Math.cos(yaw),
-            0,
-            -Math.sin(yaw)
-        );
+    return Math.hypot(dx, dz) < 4.5;
+  });
 
-    const dir =
-        new THREE.Vector3();
+  if (target) {
+    target.hp -= 25;
 
-    dir.addScaledVector(
-        forward,
-        -ay
-    );
+    target.mesh.rotation.y += .4;
 
-    dir.addScaledVector(
-        right,
-        ax
-    );
+    toast(`HIT ${target.name}`);
 
-    if(dir.lengthSq()>0)
-        dir.normalize();
+    if (target.hp <= 0) {
+      target.alive = false;
 
-    player.position.addScaledVector(
-        dir,
-        speed*dt
-    );
+      target.mesh.rotation.x = -1.2;
 
-    /* island boundary */
+      stats.kills++;
 
-    const d =
-        Math.sqrt(
-            player.position.x**2 +
-            player.position.z**2
-        );
+      score += 40;
 
-    const limit =
-        CFG.island-4;
-
-    if(d > limit) {
-
-        player.position.x *=
-            limit/d;
-
-        player.position.z *=
-            limit/d;
+      setTimeout(() => {
+        target.mesh.visible = false;
+      }, 500);
     }
+  } else {
+    toast("MISS");
+  }
 
-    if(dir.lengthSq()>0) {
-
-        player.rotation.y =
-            Math.atan2(
-                dir.x,
-                dir.z
-            );
-    }
-
-    save.x=player.position.x;
-    save.z=player.position.z;
+  setTimeout(() => {
+    attackCooldown = false;
+  }, 450);
 }
 
 /* =========================
@@ -1373,325 +3256,1862 @@ function movePlayer(dt) {
 ========================= */
 
 function updateAnimals(dt) {
+  for (const a of animals) {
+    if (!a.alive) continue;
 
-    for(const a of animals) {
+    const dx =
+      player.position.x -
+      a.mesh.position.x;
 
-        if(!a.visible) continue;
+    const dz =
+      player.position.z -
+      a.mesh.position.z;
 
-        const dist =
-            a.position.distanceTo(
-                player.position
-            );
+    const d = Math.hypot(dx, dz);
 
-        if(dist < 12) {
+    if (d < 18) {
+      const speed =
+        a.type === "boar" ? 2.4 : 1.4;
 
-            const dx =
-                a.position.x -
-                player.position.x;
+      a.mesh.position.x +=
+        (dx / Math.max(d, .001)) *
+        speed *
+        dt;
 
-            const dz =
-                a.position.z -
-                player.position.z;
+      a.mesh.position.z +=
+        (dz / Math.max(d, .001)) *
+        speed *
+        dt;
 
-            const len =
-                Math.sqrt(dx*dx+dz*dz)||1;
+      a.mesh.lookAt(
+        player.position.x,
+        a.mesh.position.y,
+        player.position.z
+      );
 
-            a.position.x +=
-                dx/len*a.userData.speed*dt;
-
-            a.position.z +=
-                dz/len*a.userData.speed*dt;
-
-            a.rotation.y =
-                Math.atan2(dx,dz);
-        }
-    }
-}
-
-/* =========================
-   ATTACK
-========================= */
-
-function attack() {
-
-    let best=null;
-    let dist=3.2;
-
-    for(const a of animals) {
-
-        if(!a.visible) continue;
-
-        const d =
-            a.position.distanceTo(
-                player.position
-            );
-
-        if(d<dist) {
-
-            dist=d;
-            best=a;
-        }
-    }
-
-    if(!best) {
-
-        toast("Tidak ada hewan");
-        return;
-    }
-
-    best.userData.hp -= 10;
-
-    if(best.userData.hp<=0) {
-
-        best.visible=false;
-
-        save.berry += 1;
-
-        toast("🐗 Hewan dikalahkan +1 makanan");
+      if (
+        a.type === "boar" &&
+        d < 2.4 &&
+        Math.random() < dt * .8
+      ) {
+        damagePlayer(5);
+      }
     } else {
+      a.walkTime += dt;
 
-        toast("⚔️ Serangan!");
+      if (a.walkTime > 2 + Math.random() * 2) {
+        a.walkTime = 0;
+
+        a.dir =
+          Math.random() *
+          Math.PI * 2;
+      }
+
+      a.mesh.position.x +=
+        Math.cos(a.dir) *
+        dt *
+        .45;
+
+      a.mesh.position.z +=
+        Math.sin(a.dir) *
+        dt *
+        .45;
     }
 
-    saveGame();
-    updateHUD();
-}
-
-button("⚔️",120,280,attack);
-
-/* =========================
-   DAY / NIGHT
-========================= */
-
-function updateDay(dt) {
-
-    save.time += dt*.8;
-
-    if(save.time >= 24) {
-
-        save.time=0;
-        save.day++;
-    }
-
-    const t =
-        save.time/24 *
-        Math.PI*2;
-
-    sun.position.set(
-        Math.cos(t)*100,
-        Math.sin(t)*100,
-        30
+    const r = Math.hypot(
+      a.mesh.position.x,
+      a.mesh.position.z
     );
 
-    const daylight =
-        Math.max(
-            .12,
-            Math.sin(t)*.5+.5
-        );
-
-    hemi.intensity =
-        .55+daylight*1.5;
-
-    sun.intensity =
-        .4+daylight*2.4;
-
-    const night =
-        1-daylight;
-
-    scene.background.lerp(
-        new THREE.Color(0x081827),
-        night*.02
-    );
-
-    scene.fog.color.copy(
-        scene.background
-    );
-
-    /* survival */
-
-    save.hunger =
-        Math.max(
-            0,
-            save.hunger-dt*.35
-        );
-
-    save.thirst =
-        Math.max(
-            0,
-            save.thirst-dt*.55
-        );
-
-    if(save.hunger<=0 ||
-       save.thirst<=0) {
-
-        save.health =
-            Math.max(
-                0,
-                save.health-dt*2
-            );
+    if (r > ISLAND - 10) {
+      a.mesh.position.x *= .98;
+      a.mesh.position.z *= .98;
     }
-
-    if(save.health<=0) {
-
-        save.health=50;
-        save.hunger=50;
-        save.thirst=50;
-
-        player.position.set(0,0,12);
-
-        toast("💀 Kamu pingsan dan kembali ke pantai");
-    }
+  }
 }
 
 /* =========================
-   WATER ANIMATION
+   PLAYER MOVEMENT
 ========================= */
 
-let waterTime=0;
+function updatePlayer(dt) {
+  if (gameOver || paused) return;
 
-function animateWater(dt) {
+  let sx = joystickX;
+  let sz = joystickY;
 
-    waterTime += dt;
+  const moving =
+    Math.abs(sx) > .05 ||
+    Math.abs(sz) > .05;
 
-    ocean.position.y =
-        -.8+
-        Math.sin(waterTime*.8)*.08;
+  if (moving) {
+    let length =
+      Math.hypot(sx, sz);
 
-    ocean.rotation.z =
-        Math.sin(waterTime*.15)*.002;
-}
-
-/* =========================
-   TREE WIND
-========================= */
-
-function animateTrees(t) {
-
-    for(let i=0;i<trees.length;i++) {
-
-        const tree=trees[i];
-
-        if(!tree.visible) continue;
-
-        tree.rotation.z =
-            Math.sin(
-                t*.001+i
-            )*.018;
+    if (length > 1) {
+      sx /= length;
+      sz /= length;
     }
+
+    let speed =
+      running ? 7.2 : 4.2;
+
+    if (running && stats.stamina > 0) {
+      stats.stamina -= dt * 13;
+    } else if (running) {
+      speed = 4.2;
+      running = false;
+    }
+
+    const forward = new THREE.Vector3(
+      Math.sin(cameraYaw),
+      0,
+      Math.cos(cameraYaw)
+    );
+
+    const right = new THREE.Vector3(
+      Math.cos(cameraYaw),
+      0,
+      -Math.sin(cameraYaw)
+    );
+
+    const move = new THREE.Vector3();
+
+    move.addScaledVector(
+      right,
+      sx * speed * dt
+    );
+
+    move.addScaledVector(
+      forward,
+      sz * speed * dt
+    );
+
+    player.position.add(move);
+
+    player.rotation.y =
+      Math.atan2(
+        move.x,
+        move.z
+      );
+
+    playerWalkTime += dt * (
+      running ? 12 : 7
+    );
+
+    playerBody.position.y =
+      Math.abs(
+        Math.sin(playerWalkTime)
+      ) * .08;
+  } else {
+    stats.stamina += dt * 8;
+
+    playerBody.position.y =
+      Math.sin(
+        performance.now() * .002
+      ) * .015;
+  }
+
+  stats.stamina = Math.max(
+    0,
+    Math.min(100, stats.stamina)
+  );
+
+  const r = Math.hypot(
+    player.position.x,
+    player.position.z
+  );
+
+  const limit = ISLAND - 8;
+
+  if (r > limit) {
+    player.position.x =
+      (player.position.x / r) *
+      limit;
+
+    player.position.z =
+      (player.position.z / r) *
+      limit;
+  }
+
+  player.position.y = 0;
 }
 
 /* =========================
    CAMERA
 ========================= */
 
-const camTarget = new THREE.Vector3();
+function updateCamera(dt) {
+  const target = new THREE.Vector3(
+    player.position.x,
+    player.position.y + 1.1,
+    player.position.z
+  );
 
-function updateCamera() {
+  const distance = 7.5;
 
-    const distance=12;
+  const horizontal =
+    Math.cos(cameraPitch) *
+    distance;
 
-    const horizontal =
-        Math.cos(pitch)*distance;
+  camera.position.x =
+    target.x +
+    Math.sin(cameraYaw) *
+    horizontal;
 
-    camera.position.x =
-        player.position.x +
-        Math.sin(yaw)*horizontal;
+  camera.position.z =
+    target.z +
+    Math.cos(cameraYaw) *
+    horizontal;
 
-    camera.position.z =
-        player.position.z +
-        Math.cos(yaw)*horizontal;
+  camera.position.y =
+    target.y +
+    Math.sin(cameraPitch) *
+    distance +
+    1.2;
 
-    camera.position.y =
-        player.position.y +
-        3 +
-        Math.sin(pitch)*distance;
+  camera.lookAt(target);
 
-    camTarget.copy(player.position);
+  if (cameraShake > 0) {
+    camera.position.x +=
+      (Math.random() - .5) *
+      cameraShake;
 
-    camTarget.y += 1.4;
+    camera.position.y +=
+      (Math.random() - .5) *
+      cameraShake;
 
-    camera.lookAt(camTarget);
+    camera.position.z +=
+      (Math.random() - .5) *
+      cameraShake;
+
+    cameraShake *= .88;
+
+    if (cameraShake < .01) {
+      cameraShake = 0;
+    }
+  }
+}
+
+let cameraShake = 0;
+
+function shakeCamera(amount) {
+  cameraShake = Math.max(
+    cameraShake,
+    amount
+  );
 }
 
 /* =========================
-   RUN BUTTON
+   SURVIVAL SYSTEM
 ========================= */
 
-const runButton =
-button("🏃",205,180,()=>{});
+let survivalTimer = 0;
 
-runButton.onpointerdown = () => {
-    running=true;
+function updateSurvival(dt) {
+  if (gameOver || paused) return;
+
+  survivalTimer += dt;
+
+  stats.hunger -= dt * .035;
+  stats.thirst -= dt * .065;
+
+  if (stats.hunger < 25) {
+    stats.health -= dt * .12;
+  }
+
+  if (stats.thirst < 20) {
+    stats.health -= dt * .2;
+  }
+
+  stats.hunger = Math.max(
+    0,
+    Math.min(100, stats.hunger)
+  );
+
+  stats.thirst = Math.max(
+    0,
+    Math.min(100, stats.thirst)
+  );
+
+  stats.health = Math.max(
+    0,
+    Math.min(100, stats.health)
+  );
+
+  score += dt * .5;
+
+  if (score > highScore) {
+    highScore = Math.floor(score);
+  }
+
+  if (stats.health <= 0) {
+    endGame();
+  }
+
+  updateUI();
+}
+
+/* =========================
+   DAY / NIGHT
+========================= */
+
+let worldTime = 7 * 60;
+
+function updateDayNight(dt) {
+  if (paused || gameOver) return;
+
+  worldTime += dt * 1.5;
+
+  if (worldTime >= 1440) {
+    worldTime -= 1440;
+    stats.day++;
+    toast(`🌅 HARI ${stats.day}`);
+  }
+
+  const t =
+    worldTime / 1440;
+
+  const sunAngle =
+    t * Math.PI * 2 -
+    Math.PI / 2;
+
+  sun.position.set(
+    Math.cos(sunAngle) * 250,
+    Math.sin(sunAngle) * 250,
+    80
+  );
+
+  const daylight =
+    Math.max(
+      0.08,
+      Math.sin(sunAngle)
+    );
+
+  sun.intensity =
+    .15 +
+    daylight * 1.15;
+
+  hemi.intensity =
+    .2 +
+    daylight * .65;
+
+  const night =
+    daylight < .25;
+
+  if (night) {
+    scene.fog.near = 30;
+    scene.fog.far = 180;
+  } else {
+    scene.fog.near = 90;
+    scene.fog.far = 360;
+  }
+
+  const hour =
+    Math.floor(worldTime / 60);
+
+  const minute =
+    Math.floor(worldTime % 60);
+
+  const timeText =
+    String(hour).padStart(2, "0") +
+    ":" +
+    String(minute).padStart(2, "0");
+
+  let clock =
+    document.getElementById("clockText");
+
+  if (!clock) {
+    clock = document.createElement("div");
+    clock.id = "clockText";
+
+    Object.assign(clock.style, {
+      position: "fixed",
+      left: "50%",
+      top: "15px",
+      transform: "translateX(-50%)",
+      zIndex: "20",
+      color: "#fff",
+      fontWeight: "900",
+      fontSize: "14px",
+      textShadow: "0 2px 4px #000",
+      pointerEvents: "none"
+    });
+
+    document.body.appendChild(clock);
+  }
+
+  clock.textContent =
+    `DAY ${stats.day} • ${timeText}`;
+}
+
+/* =========================
+   WEATHER
+========================= */
+
+let weatherTimer = 35;
+let raining = false;
+
+function setRain(state) {
+  raining = state;
+
+  rainGroup.visible = state;
+
+  if (state) {
+    toast("🌧️ HUJAN TURUN");
+  } else {
+    toast("☀️ HUJAN BERHENTI");
+  }
+}
+
+function updateWeather(dt) {
+  if (paused || gameOver) return;
+
+  weatherTimer -= dt;
+
+  if (weatherTimer <= 0) {
+    weatherTimer =
+      45 + Math.random() * 80;
+
+    if (Math.random() < .45) {
+      setRain(!raining);
+    }
+  }
+
+  if (raining) {
+    rainGroup.children.forEach(drop => {
+      drop.position.y -=
+        dt * 20;
+
+      if (drop.position.y < 0) {
+        drop.position.y =
+          15 + Math.random() * 15;
+      }
+    });
+  }
+}
+
+/* =========================
+   OBJECT ANIMATION
+========================= */
+
+function animateWorld(dt) {
+  const now =
+    performance.now() * .001;
+
+  for (const tree of trees) {
+    if (!tree.mesh.visible) continue;
+
+    tree.mesh.rotation.z =
+      Math.sin(
+        now * .7 +
+        tree.phase
+      ) * .025;
+
+    tree.mesh.rotation.x =
+      Math.cos(
+        now * .5 +
+        tree.phase
+      ) * .018;
+  }
+
+  for (const b of berryBushes) {
+    if (!b.mesh.visible) continue;
+
+    b.mesh.scale.y =
+      1 +
+      Math.sin(
+        now * 1.5 +
+        b.phase
+      ) * .025;
+  }
+
+  for (const c of coconuts) {
+    if (!c.mesh.visible) continue;
+
+    c.mesh.rotation.y +=
+      dt * .3;
+  }
+
+  for (const s of structures) {
+    if (s.type !== "campfire") continue;
+
+    const flicker =
+      1 +
+      Math.sin(now * 15) * .15;
+
+    s.fire.scale.set(
+      flicker,
+      flicker,
+      flicker
+    );
+
+    s.light.intensity =
+      1.8 +
+      Math.sin(now * 12) * .5;
+  }
+
+  if (water) {
+    water.material.map &&
+      (water.material.map.offset.y +=
+        dt * .015);
+
+    water.rotation.z =
+      Math.sin(now * .15) * .002;
+  }
+}
+
+/* =========================
+   QUEST PROGRESSION
+========================= */
+
+function checkProgress() {
+  if (stats.chapter === 1) {
+    if (
+      inventory.wood >= 10 &&
+      inventory.stone >= 5
+    ) {
+      stats.chapter = 2;
+      toast("📖 CHAPTER 2 TERBUKA");
+      updateQuest();
+    }
+  }
+
+  if (
+    stats.chapter === 2 &&
+    structures.some(s => s.type === "campfire")
+  ) {
+    stats.chapter = 3;
+    toast("📖 CHAPTER 3 TERBUKA");
+    updateQuest();
+  }
+
+  if (
+    stats.chapter === 3 &&
+    player.position.distanceTo(
+      ruins.position
+    ) < 12
+  ) {
+    stats.chapter = 4;
+    toast("🏛️ RERUNTUHAN DITEMUKAN");
+    updateQuest();
+  }
+
+  if (
+    stats.chapter === 4 &&
+    player.position.distanceTo(
+      crystal.position
+    ) < 10
+  ) {
+    crystal.visible = false;
+    stats.chapter = 5;
+    toast("💎 KRISTAL DITEMUKAN");
+    updateQuest();
+  }
+
+  if (
+    stats.chapter === 5 &&
+    player.position.distanceTo(
+      beacon.position
+    ) < 10
+  ) {
+    buildBeacon();
+  }
+}
+
+/* =========================
+   BEACON ENDING
+========================= */
+
+function buildBeacon() {
+  if (stats.beaconBuilt) return;
+
+  stats.beaconBuilt = true;
+  beacon.visible = true;
+
+  ending = true;
+
+  toast("📡 SINYAL PENYELAMATAN AKTIF!");
+
+  score += 1000;
+
+  if (score > highScore) {
+    highScore = Math.floor(score);
+  }
+
+  showEnding();
+}
+
+function showEnding() {
+  const overlay =
+    document.createElement("div");
+
+  overlay.id = "endingOverlay";
+
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "200",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0,10,20,.86)",
+    color: "#fff",
+    fontFamily: "Arial,sans-serif",
+    textAlign: "center",
+    padding: "30px"
+  });
+
+  overlay.innerHTML = `
+    <div style="
+      max-width:600px;
+      padding:30px;
+      border-radius:24px;
+      background:rgba(255,255,255,.08);
+      backdrop-filter:blur(14px);
+    ">
+
+      <div style="
+        font-size:48px;
+        margin-bottom:12px;">
+        📡
+      </div>
+
+      <div style="
+        font-size:28px;
+        font-weight:900;">
+        SINYAL TERKIRIM
+      </div>
+
+      <p style="
+        opacity:.8;
+        line-height:1.7;">
+        Setelah bertahan hidup di pulau,
+        sinyal penyelamatan akhirnya berhasil
+        dikirim.
+      </p>
+
+      <p style="
+        font-size:18px;
+        font-weight:800;">
+        PULAU MASIH BISA DIEKSPLORASI.
+      </p>
+
+      <button id="continueFreeRoam"
+        style="
+          margin-top:15px;
+          border:0;
+          border-radius:14px;
+          padding:14px 22px;
+          font-weight:900;
+          font-size:15px;">
+        LANJUT FREE ROAM
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document
+    .getElementById("continueFreeRoam")
+    .onclick = () => {
+      overlay.remove();
+      ending = false;
+      toast("🌴 FREE ROAM AKTIF");
+    };
+}
+
+/* =========================
+   GAME OVER
+========================= */
+
+function endGame() {
+  if (gameOver) return;
+
+  gameOver = true;
+
+  highScore =
+    Math.max(
+      highScore,
+      Math.floor(score)
+    );
+
+  localStorage.setItem(
+    "valen_highscore",
+    highScore
+  );
+
+  const overlay =
+    document.createElement("div");
+
+  overlay.id = "gameOverOverlay";
+
+  Object.assign(overlay.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "250",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(0,0,0,.82)",
+    color: "#fff",
+    fontFamily: "Arial,sans-serif",
+    textAlign: "center"
+  });
+
+  overlay.innerHTML = `
+    <div style="
+      padding:30px;
+      width:min(90%,420px);
+      border-radius:24px;
+      background:rgba(255,255,255,.08);
+      backdrop-filter:blur(12px);
+    ">
+
+      <div style="font-size:48px">
+        💀
+      </div>
+
+      <div style="
+        font-size:30px;
+        font-weight:900;">
+        GAME OVER
+      </div>
+
+      <div style="
+        margin-top:10px;
+        opacity:.8;">
+        Skor: ${Math.floor(score)}
+      </div>
+
+      <div style="
+        margin-top:4px;
+        opacity:.8;">
+        High Score: ${Math.floor(highScore)}
+      </div>
+
+      <button id="restartGame"
+        style="
+        margin-top:20px;
+        padding:14px 24px;
+        border:0;
+        border-radius:14px;
+        font-weight:900;">
+        🔄 RESTART
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById(
+    "restartGame"
+  ).onclick = () => {
+    location.reload();
+  };
+}
+
+/* =========================
+   MENU
+========================= */
+
+const menu = document.createElement("div");
+
+menu.id = "gameMenu";
+
+Object.assign(menu.style, {
+  position: "fixed",
+  inset: "0",
+  zIndex: "180",
+  display: "none",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "rgba(0,0,0,.72)",
+  backdropFilter: "blur(8px)",
+  fontFamily: "Arial,sans-serif"
+});
+
+menu.innerHTML = `
+  <div style="
+    width:min(90%,430px);
+    padding:24px;
+    border-radius:22px;
+    background:rgba(10,25,32,.94);
+    color:#fff;
+    text-align:center;">
+
+    <div style="
+      font-size:26px;
+      font-weight:900;
+      margin-bottom:18px;">
+      VALEN ISLAND
+    </div>
+
+    <button class="menuBtn" id="resumeBtn">
+      ▶ LANJUT
+    </button>
+
+    <button class="menuBtn" id="saveBtn">
+      💾 SAVE
+    </button>
+
+    <button class="menuBtn" id="loadBtn">
+      📂 LOAD
+    </button>
+
+    <button class="menuBtn" id="eatBtn">
+      🍓 MAKAN BERRY
+    </button>
+
+    <button class="menuBtn" id="drinkBtn">
+      🥥 MINUM KELAPA
+    </button>
+
+    <button class="menuBtn" id="fishEatBtn">
+      🍳 MAKAN IKAN MATANG
+    </button>
+
+    <button class="menuBtn" id="campfireBtn">
+      🔥 CRAFT API
+    </button>
+
+    <button class="menuBtn" id="shelterBtn">
+      🏕️ CRAFT SHELTER
+    </button>
+
+    <button class="menuBtn" id="cookBtn">
+      🍳 MASAK IKAN
+    </button>
+
+    <button class="menuBtn" id="resetSaveBtn">
+      🗑️ RESET SAVE
+    </button>
+  </div>
+`;
+
+document.body.appendChild(menu);
+
+const menuStyle = document.createElement("style");
+
+menuStyle.textContent = `
+.menuBtn{
+  display:block;
+  width:100%;
+  margin:8px 0;
+  padding:12px;
+  border:0;
+  border-radius:13px;
+  font-size:14px;
+  font-weight:900;
+}
+`;
+
+document.head.appendChild(menuStyle);
+
+function toggleMenu() {
+  paused = !paused;
+
+  menu.style.display =
+    paused ? "flex" : "none";
+}
+
+document.getElementById(
+  "resumeBtn"
+).onclick = toggleMenu;
+
+document.getElementById(
+  "saveBtn"
+).onclick = saveGame;
+
+document.getElementById(
+  "loadBtn"
+).onclick = loadGame;
+
+document.getElementById(
+  "eatBtn"
+).onclick = eatBerry;
+
+document.getElementById(
+  "drinkBtn"
+).onclick = drinkCoconut;
+
+document.getElementById(
+  "fishEatBtn"
+).onclick = eatCookedFish;
+
+document.getElementById(
+  "campfireBtn"
+).onclick = craftCampfire;
+
+document.getElementById(
+  "shelterBtn"
+).onclick = craftShelter;
+
+document.getElementById(
+  "cookBtn"
+).onclick = () => {
+  if (!nearestCampfire()) {
+    toast("DEKATI API UNGGUN");
+    return;
+  }
+
+  cookFish();
 };
 
-runButton.onpointerup = () => {
-    running=false;
+document.getElementById(
+  "resetSaveBtn"
+).onclick = () => {
+  if (
+    confirm("Hapus semua save?")
+  ) {
+    resetSave();
+  }
 };
 
-runButton.onpointercancel = () => {
-    running=false;
-};
+/* =========================
+   ACTION BUTTONS
+========================= */
+
+const actionPanel =
+  document.createElement("div");
+
+Object.assign(actionPanel.style, {
+  position: "fixed",
+  right: "22px",
+  bottom: "190px",
+  zIndex: "30",
+  display: "grid",
+  gridTemplateColumns: "repeat(2,70px)",
+  gap: "10px"
+});
+
+function actionButton(
+  id,
+  text,
+  callback
+) {
+  const b =
+    document.createElement("button");
+
+  b.id = id;
+  b.textContent = text;
+
+  Object.assign(b.style, {
+    width: "70px",
+    height: "58px",
+    border: "1px solid rgba(255,255,255,.25)",
+    borderRadius: "18px",
+    background: "rgba(10,25,35,.68)",
+    color: "#fff",
+    fontSize: "22px",
+    fontWeight: "900",
+    backdropFilter: "blur(10px)"
+  });
+
+  b.addEventListener(
+    "pointerdown",
+    e => {
+      e.preventDefault();
+      callback();
+    },
+    { passive: false }
+  );
+
+  actionPanel.appendChild(b);
+
+  return b;
+}
+
+actionButton(
+  "attackAction",
+  "⚔️",
+  attack
+);
+
+actionButton(
+  "gatherAction",
+  "🪓",
+  gatherWood
+);
+
+actionButton(
+  "stoneAction",
+  "⛏️",
+  gatherStone
+);
+
+actionButton(
+  "fishAction",
+  "🎣",
+  fish
+);
+
+actionButton(
+  "berryAction",
+  "🍓",
+  gatherBerry
+);
+
+actionButton(
+  "coconutAction",
+  "🥥",
+  gatherCoconut
+);
+
+actionButton(
+  "menuAction",
+  "☰",
+  toggleMenu
+);
+
+document.body.appendChild(
+  actionPanel
+);
+
+/* =========================
+   KEYBOARD FALLBACK
+========================= */
+
+const keys = {};
+
+window.addEventListener(
+  "keydown",
+  e => {
+    keys[e.key.toLowerCase()] = true;
+
+    if (
+      e.key === "Escape"
+    ) {
+      toggleMenu();
+    }
+
+    if (e.key.toLowerCase() === "e") {
+      gatherWood();
+    }
+
+    if (e.key.toLowerCase() === "f") {
+      fish();
+    }
+
+    if (e.key.toLowerCase() === "q") {
+      attack();
+    }
+  }
+);
+
+window.addEventListener(
+  "keyup",
+  e => {
+    keys[e.key.toLowerCase()] = false;
+  }
+);
+
+/* =========================
+   KEYBOARD MOVEMENT
+========================= */
+
+function updateKeyboardJoystick() {
+  if (
+    Math.abs(joystickX) > .05 ||
+    Math.abs(joystickY) > .05
+  ) {
+    return;
+  }
+
+  let x = 0;
+  let y = 0;
+
+  if (keys["a"] || keys["arrowleft"]) {
+    x -= 1;
+  }
+
+  if (keys["d"] || keys["arrowright"]) {
+    x += 1;
+  }
+
+  if (keys["w"] || keys["arrowup"]) {
+    y -= 1;
+  }
+
+  if (keys["s"] || keys["arrowdown"]) {
+    y += 1;
+  }
+
+  joystickX = x;
+  joystickY = y;
+}
+
+/* =========================
+   SOUND ENGINE
+========================= */
+
+let audioCtx = null;
+
+function audioInit() {
+  if (audioCtx) {
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+
+    return;
+  }
+
+  try {
+    audioCtx =
+      new (
+        window.AudioContext ||
+        window.webkitAudioContext
+      )();
+  } catch (_) {}
+}
+
+function tone(
+  frequency,
+  duration,
+  volume = .04,
+  type = "sine"
+) {
+  if (!audioCtx) return;
+
+  const osc =
+    audioCtx.createOscillator();
+
+  const gain =
+    audioCtx.createGain();
+
+  osc.type = type;
+
+  osc.frequency.value =
+    frequency;
+
+  gain.gain.setValueAtTime(
+    volume,
+    audioCtx.currentTime
+  );
+
+  gain.gain.exponentialRampToValueAtTime(
+    .001,
+    audioCtx.currentTime +
+      duration
+  );
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+
+  osc.stop(
+    audioCtx.currentTime +
+    duration
+  );
+}
+
+function chopSound() {
+  audioInit();
+
+  tone(130,.08,.07,"square");
+  setTimeout(
+    () => tone(80,.08,.04,"square"),
+    60
+  );
+}
+
+function stoneSound() {
+  audioInit();
+
+  tone(220,.06,.06,"triangle");
+  setTimeout(
+    () => tone(160,.07,.04,"triangle"),
+    60
+  );
+}
+
+function attackSound() {
+  audioInit();
+
+  tone(180,.06,.05,"sawtooth");
+  setTimeout(
+    () => tone(80,.08,.03,"square"),
+    40
+  );
+}
+
+function fishingSound() {
+  audioInit();
+
+  tone(600,.08,.03,"sine");
+
+  setTimeout(
+    () => tone(850,.15,.04,"sine"),
+    1500
+  );
+}
+
+/* =========================
+   TOUCH AUDIO UNLOCK
+========================= */
+
+window.addEventListener(
+  "pointerdown",
+  audioInit,
+  {
+    once: true,
+    passive: true
+  }
+);
+
+/* =========================
+   CHAPTER INITIALIZATION
+========================= */
+
+updateQuest();
+updateUI();
+
+/* =========================
+   MAIN LOOP
+========================= */
+
+function gameLoop(now) {
+  requestAnimationFrame(gameLoop);
+
+  const dt =
+    Math.min(
+      .05,
+      (now - lastTime) / 1000
+    );
+
+  lastTime = now;
+
+  if (!paused && !gameOver) {
+    updateKeyboardJoystick();
+    updatePlayer(dt);
+    updateAnimals(dt);
+    updateSurvival(dt);
+    updateDayNight(dt);
+    updateWeather(dt);
+    animateWorld(dt);
+    checkProgress();
+  }
+
+  updateCamera(dt);
+  drawMinimap();
+
+  renderer.render(
+    scene,
+    camera
+  );
+}
+
+requestAnimationFrame(
+  gameLoop
+);
 
 /* =========================
    RESIZE
 ========================= */
 
-window.addEventListener("resize",() => {
-
+window.addEventListener(
+  "resize",
+  () => {
     camera.aspect =
-        innerWidth/innerHeight;
+      window.innerWidth /
+      window.innerHeight;
 
     camera.updateProjectionMatrix();
 
     renderer.setSize(
-        innerWidth,
-        innerHeight,
-        false
-    );
-});
-
-/* =========================
-   AUTOSAVE
-========================= */
-
-setInterval(saveGame,10000);
-
-/* =========================
-   GAME LOOP
-========================= */
-
-function loop(now) {
-
-    requestAnimationFrame(loop);
-
-    let dt =
-        (now-lastTime)/1000;
-
-    lastTime=now;
-
-    dt=Math.min(dt,.05);
-
-    movePlayer(dt);
-    updateAnimals(dt);
-    updateDay(dt);
-    animateWater(dt);
-    animateTrees(now);
-    updateCamera();
-
-    renderer.render(
-        scene,
-        camera
+      window.innerWidth,
+      window.innerHeight
     );
 
-    if(Math.floor(now/500)%2===0)
-        updateHUD();
+    renderer.setPixelRatio(
+      Math.min(
+        window.devicePixelRatio || 1,
+        1.5
+      )
+    );
+  }
+);
+
+/* =========================
+   START
+========================= */
+
+setTimeout(() => {
+  updateUI();
+  updateQuest();
+  drawMinimap();
+
+  toast(
+    "🌴 SELAMAT DATANG DI VALEN ISLAND"
+  );
+}, 500);
+   /* =========================================================
+   VALEN ISLAND SURVIVAL
+   BAGIAN 4/4 — EXTRA SYSTEMS
+========================================================= */
+
+/* =========================
+   ACHIEVEMENTS
+========================= */
+
+const achievements = {
+  firstWood: false,
+  firstStone: false,
+  firstFish: false,
+  firstCampfire: false,
+  hunter: false,
+  explorer: false,
+  survivor: false,
+  beacon: false
+};
+
+function achievement(id, title) {
+  if (achievements[id]) return;
+
+  achievements[id] = true;
+
+  score += 50;
+
+  toast(`🏆 ${title} +50`);
+
+  setTimeout(() => {
+    saveAchievementData();
+  }, 100);
 }
 
-updateCamera();
-updateHUD();
+function saveAchievementData() {
+  try {
+    localStorage.setItem(
+      "valen_achievements",
+      JSON.stringify(achievements)
+    );
+  } catch (_) {}
+}
 
-requestAnimationFrame(loop);
+function loadAchievementData() {
+  try {
+    const raw =
+      localStorage.getItem(
+        "valen_achievements"
+      );
 
-toast("🏝️ Selamat datang di Valen Island!");
+    if (raw) {
+      Object.assign(
+        achievements,
+        JSON.parse(raw)
+      );
+    }
+  } catch (_) {}
+}
 
-})();
+loadAchievementData();
+
+/* =========================
+   ACHIEVEMENT CHECKER
+========================= */
+
+setInterval(() => {
+  if (inventory.wood > 0) {
+    achievement(
+      "firstWood",
+      "Kayu Pertama"
+    );
+  }
+
+  if (inventory.stone > 0) {
+    achievement(
+      "firstStone",
+      "Penambang Pemula"
+    );
+  }
+
+  if (stats.fishCaught > 0) {
+    achievement(
+      "firstFish",
+      "Nelayan"
+    );
+  }
+
+  if (
+    structures.some(
+      s => s.type === "campfire"
+    )
+  ) {
+    achievement(
+      "firstCampfire",
+      "Api Pertama"
+    );
+  }
+
+  if (stats.kills >= 5) {
+    achievement(
+      "hunter",
+      "Pemburu Pulau"
+    );
+  }
+
+  if (
+    player.position.length() > 120
+  ) {
+    achievement(
+      "explorer",
+      "Penjelajah"
+    );
+  }
+
+  if (stats.day >= 5) {
+    achievement(
+      "survivor",
+      "Bertahan 5 Hari"
+    );
+  }
+
+  if (stats.beaconBuilt) {
+    achievement(
+      "beacon",
+      "Sinyal Penyelamatan"
+    );
+  }
+}, 2000);
+
+/* =========================
+   SIMPLE SETTINGS
+========================= */
+
+const settingsButton =
+  document.createElement("button");
+
+settingsButton.textContent = "⚙️";
+
+Object.assign(
+  settingsButton.style,
+  {
+    position: "fixed",
+    left: "18px",
+    bottom: "18px",
+    width: "58px",
+    height: "58px",
+    border: "0",
+    borderRadius: "18px",
+    background:
+      "rgba(10,25,35,.72)",
+    color: "#fff",
+    fontSize: "23px",
+    zIndex: "40",
+    backdropFilter: "blur(10px)"
+  }
+);
+
+document.body.appendChild(
+  settingsButton
+);
+
+const settingsPanel =
+  document.createElement("div");
+
+Object.assign(
+  settingsPanel.style,
+  {
+    position: "fixed",
+    inset: "0",
+    display: "none",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "rgba(0,0,0,.75)",
+    zIndex: "170",
+    fontFamily:
+      "Arial,sans-serif"
+  }
+);
+
+settingsPanel.innerHTML = `
+  <div style="
+    width:min(92%,430px);
+    max-height:85vh;
+    overflow:auto;
+    padding:22px;
+    border-radius:22px;
+    background:rgba(10,25,32,.96);
+    color:white;
+  ">
+
+    <div style="
+      font-size:25px;
+      font-weight:900;
+      margin-bottom:18px;">
+      ⚙️ SETTINGS
+    </div>
+
+    <label style="display:block;margin:12px 0 5px;">
+      Camera Sensitivity
+    </label>
+
+    <input id="sensitivitySlider"
+      type="range"
+      min="0"
+      max="100"
+      value="${settings.sensitivity}"
+      style="width:100%;">
+
+    <div id="sensitivityValue"
+      style="font-size:12px;opacity:.7;">
+      ${settings.sensitivity}
+    </div>
+
+    <label style="
+      display:flex;
+      justify-content:space-between;
+      margin:18px 0;">
+      <span>Invert Y</span>
+      <input id="invertYCheck"
+        type="checkbox"
+        ${settings.invertY ? "checked" : ""}>
+    </label>
+
+    <label style="
+      display:flex;
+      justify-content:space-between;
+      margin:18px 0;">
+      <span>Camera Shake</span>
+      <input id="shakeCheck"
+        type="checkbox"
+        ${settings.cameraShake ? "checked" : ""}>
+    </label>
+
+    <label style="
+      display:flex;
+      justify-content:space-between;
+      margin:18px 0;">
+      <span>Rain Effects</span>
+      <input id="rainCheck"
+        type="checkbox"
+        ${settings.effects ? "checked" : ""}>
+    </label>
+
+    <button id="closeSettings"
+      style="
+      width:100%;
+      padding:14px;
+      border:0;
+      border-radius:13px;
+      font-weight:900;">
+      TUTUP
+    </button>
+  </div>
+`;
+
+document.body.appendChild(
+  settingsPanel
+);
+
+settingsButton.onclick = () => {
+  paused = true;
+  settingsPanel.style.display =
+    "flex";
+};
+
+document.getElementById(
+  "closeSettings"
+).onclick = () => {
+  settingsPanel.style.display =
+    "none";
+
+  paused = false;
+};
+
+document.getElementById(
+  "sensitivitySlider"
+).oninput = e => {
+  settings.sensitivity =
+    Number(e.target.value);
+
+  document.getElementById(
+    "sensitivityValue"
+  ).textContent =
+    settings.sensitivity;
+
+  localStorage.setItem(
+    "valen_settings",
+    JSON.stringify(settings)
+  );
+};
+
+document.getElementById(
+  "invertYCheck"
+).onchange = e => {
+  settings.invertY =
+    e.target.checked;
+
+  localStorage.setItem(
+    "valen_settings",
+    JSON.stringify(settings)
+  );
+};
+
+document.getElementById(
+  "shakeCheck"
+).onchange = e => {
+  settings.cameraShake =
+    e.target.checked;
+
+  localStorage.setItem(
+    "valen_settings",
+    JSON.stringify(settings)
+  );
+};
+
+document.getElementById(
+  "rainCheck"
+).onchange = e => {
+  settings.effects =
+    e.target.checked;
+
+  rainGroup.visible =
+    settings.effects &&
+    raining;
+
+  localStorage.setItem(
+    "valen_settings",
+    JSON.stringify(settings)
+  );
+};
+
+/* =========================
+   SETTINGS LOAD
+========================= */
+
+try {
+  const savedSettings =
+    localStorage.getItem(
+      "valen_settings"
+    );
+
+  if (savedSettings) {
+    Object.assign(
+      settings,
+      JSON.parse(savedSettings)
+    );
+  }
+} catch (_) {}
+
+/* =========================
+   APPLY SETTINGS
+========================= */
+
+function applySettings() {
+  if (
+    typeof settings.sensitivity ===
+    "number"
+  ) {
+    cameraSensitivity =
+      0.002 +
+      settings.sensitivity /
+      100 *
+      0.01;
+  }
+
+  rainGroup.visible =
+    settings.effects &&
+    raining;
+}
+
+applySettings();
+
+/* =========================
+   MOBILE ORIENTATION
+========================= */
+
+function checkOrientation() {
+  const portrait =
+    window.innerHeight >
+    window.innerWidth;
+
+  document.body.classList.toggle(
+    "portraitMode",
+    portrait
+  );
+}
+
+window.addEventListener(
+  "resize",
+  checkOrientation
+);
+
+checkOrientation();
+
+/* =========================
+   FPS MONITOR
+========================= */
+
+let fpsFrames = 0;
+let fpsTime =
+  performance.now();
+
+let currentFPS = 60;
+
+setInterval(() => {
+  const now =
+    performance.now();
+
+  const elapsed =
+    now - fpsTime;
+
+  if (elapsed > 0) {
+    currentFPS =
+      Math.round(
+        fpsFrames /
+        (elapsed / 1000)
+      );
+  }
+
+  fpsFrames = 0;
+  fpsTime = now;
+}, 1000);
+
+const fpsDisplay =
+  document.createElement("div");
+
+Object.assign(
+  fpsDisplay.style,
+  {
+    position: "fixed",
+    left: "50%",
+    bottom: "10px",
+    transform:
+      "translateX(-50%)",
+    color:
+      "rgba(255,255,255,.45)",
+    fontSize: "10px",
+    fontFamily:
+      "monospace",
+    zIndex: "15",
+    pointerEvents: "none"
+  }
+);
+
+document.body.appendChild(
+  fpsDisplay
+);
+
+setInterval(() => {
+  fpsDisplay.textContent =
+    `${currentFPS} FPS`;
+}, 1000);
+
+/* =========================
+   PERFORMANCE COUNTER
+========================= */
+
+const originalGameLoop =
+  gameLoop;
+
+function performanceTick() {
+  fpsFrames++;
+}
+
+/* =========================
+   SAVE BEFORE APP CLOSE
+========================= */
+
+window.addEventListener(
+  "beforeunload",
+  () => {
+    try {
+      syncInventory();
+
+      localStorage.setItem(
+        "valen_island_save",
+        JSON.stringify({
+          stats,
+          player: {
+            x:
+              player.position.x,
+            y:
+              player.position.y,
+            z:
+              player.position.z
+          },
+          score,
+          highScore,
+          cameraYaw,
+          cameraPitch
+        })
+      );
+    } catch (_) {}
+  }
+);
+
+/* =========================
+   VISIBILITY SAVE
+========================= */
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+    if (
+      document.hidden &&
+      !gameOver
+    ) {
+      try {
+        syncInventory();
+
+        localStorage.setItem(
+          "valen_island_save",
+          JSON.stringify({
+            stats,
+            player: {
+              x:
+                player.position.x,
+              y:
+                player.position.y,
+              z:
+                player.position.z
+            },
+            score,
+            highScore,
+            cameraYaw,
+            cameraPitch
+          })
+        );
+      } catch (_) {}
+    }
+  }
+);
+
+/* =========================
+   DEBUG ERROR DISPLAY
+========================= */
+
+window.addEventListener(
+  "error",
+  e => {
+    console.error(
+      "VALEN ERROR:",
+      e.error || e.message
+    );
+  }
+);
+
+/* =========================
+   FINAL INITIALIZATION
+========================= */
+
+setTimeout(() => {
+  try {
+    applySettings();
+    updateUI();
+    updateQuest();
+    drawMinimap();
+  } catch (err) {
+    console.error(
+      "Initialization error:",
+      err
+    );
+  }
+}, 100);
+
+/* =========================================================
+   END OF GAME.JS
+========================================================= */
