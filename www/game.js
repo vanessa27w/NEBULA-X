@@ -4610,3 +4610,863 @@ console.log(
 );
 
 })();
+/* =========================================================
+   VALEN ISLAND SURVIVAL — BLOCK 4
+   CONTROL FIX + SETTINGS FIX + GAMEPLAY POLISH
+   ========================================================= */
+
+(function(){
+
+if(window.__VALEN_BLOCK4__) return;
+window.__VALEN_BLOCK4__=true;
+
+var V4=window.VALEN4=window.VALEN4||{};
+
+/* =========================================================
+   SAFE SETTINGS
+========================================================= */
+
+if(typeof settings!=="undefined"){
+
+    if(settings.sensitivity===undefined) settings.sensitivity=.005;
+    if(settings.invertY===undefined) settings.invertY=false;
+    if(settings.uiScale===undefined) settings.uiScale=1;
+    if(settings.joystickSize===undefined) settings.joystickSize=1;
+    if(settings.buttonSize===undefined) settings.buttonSize=1;
+    if(settings.autoPickup===undefined) settings.autoPickup=false;
+    if(settings.damageNumbers===undefined) settings.damageNumbers=true;
+    if(settings.cameraShake===undefined) settings.cameraShake=true;
+    if(settings.viewDistance===undefined) settings.viewDistance=100;
+    if(settings.ambient===undefined) settings.ambient=80;
+    if(settings.mute===undefined) settings.mute=false;
+    if(settings.language===undefined) settings.language="id";
+}
+
+/* =========================================================
+   CAMERA SWIPE FIX
+   Swipe kanan = kamera bergerak kanan
+========================================================= */
+
+V4.cameraTouch=null;
+
+document.addEventListener("pointerdown",function(e){
+
+    if(e.clientX < innerWidth*.42) return;
+
+    V4.cameraTouch={
+        id:e.pointerId,
+        x:e.clientX,
+        y:e.clientY
+    };
+
+},true);
+
+document.addEventListener("pointermove",function(e){
+
+    if(!V4.cameraTouch) return;
+
+    if(e.pointerId!==V4.cameraTouch.id) return;
+
+    if(typeof cameraYaw==="undefined") return;
+    if(typeof settings==="undefined") return;
+
+    var dx=e.clientX-V4.cameraTouch.x;
+
+    /*
+       Block 1 sebelumnya:
+       cameraYaw -= dx * sensitivity
+
+       Kita kompensasi sehingga hasil akhirnya:
+       swipe kanan -> kamera kanan
+    */
+
+    cameraYaw += dx * 2 * settings.sensitivity;
+
+    V4.cameraTouch.x=e.clientX;
+    V4.cameraTouch.y=e.clientY;
+
+},true);
+
+function V4clearCamera(e){
+
+    if(!V4.cameraTouch) return;
+
+    if(e.pointerId===V4.cameraTouch.id){
+        V4.cameraTouch=null;
+    }
+
+}
+
+document.addEventListener("pointerup",V4clearCamera,true);
+document.addEventListener("pointercancel",V4clearCamera,true);
+
+/* =========================================================
+   SETTINGS PANEL CLOSE FIX
+========================================================= */
+
+V4.oldOpenSettings=
+    typeof openSettings==="function"
+    ?openSettings:null;
+
+if(V4.oldOpenSettings){
+
+    openSettings=function(fromMenu){
+
+        var result=V4.oldOpenSettings(fromMenu);
+
+        setTimeout(function(){
+
+            var panel=document.getElementById("panel");
+
+            if(!panel) return;
+
+            var close=document.getElementById("closePanel");
+
+            if(close){
+
+                close.onclick=function(e){
+
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    editUI=false;
+
+                    closePanel();
+
+                    if(typeof updateHUD==="function")
+                        updateHUD();
+
+                };
+
+                close.addEventListener(
+                    "pointerup",
+                    function(e){
+
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        editUI=false;
+                        closePanel();
+
+                    },
+                    true
+                );
+
+            }
+
+        },20);
+
+        return result;
+    };
+
+}
+
+/* =========================================================
+   UNIVERSAL PANEL CLOSE
+========================================================= */
+
+document.addEventListener("click",function(e){
+
+    var btn=e.target.closest &&
+            e.target.closest("#closePanel");
+
+    if(!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    editUI=false;
+
+    if(typeof closePanel==="function")
+        closePanel();
+
+},true);
+
+/* =========================================================
+   PAUSE WHEN PANEL OPEN
+========================================================= */
+
+V4.oldOpenPanel=
+    typeof openPanel==="function"
+    ?openPanel:null;
+
+if(V4.oldOpenPanel){
+
+    openPanel=function(title){
+
+        var p=V4.oldOpenPanel(title);
+
+        if(p){
+
+            p.style.zIndex="5000";
+
+            var close=p.querySelector("#closePanel");
+
+            if(close){
+
+                close.style.position="relative";
+                close.style.zIndex="5001";
+                close.style.pointerEvents="auto";
+
+            }
+
+        }
+
+        return p;
+    };
+
+}
+
+/* =========================================================
+   EXTRA SETTINGS UI
+========================================================= */
+
+V4.addExtraSettings=function(){
+
+    var panel=document.getElementById("panel");
+
+    if(!panel) return;
+
+    if(panel.querySelector("#v4ExtraSettings"))
+        return;
+
+    var box=document.createElement("div");
+
+    box.id="v4ExtraSettings";
+
+    box.innerHTML=`
+
+        <hr style="opacity:.15;margin:18px 0">
+
+        <h3>🎮 CONTROL</h3>
+
+        <label>
+            Joystick Size
+            <input id="v4JoySize"
+                   type="range"
+                   min="0.7"
+                   max="1.5"
+                   step="0.05"
+                   value="${settings.joystickSize}">
+        </label>
+
+        <label>
+            Button Size
+            <input id="v4BtnSize"
+                   type="range"
+                   min="0.7"
+                   max="1.5"
+                   step="0.05"
+                   value="${settings.buttonSize}">
+        </label>
+
+        <label>
+            Sensitivity
+            <input id="v4Sens"
+                   type="range"
+                   min="0.001"
+                   max="0.015"
+                   step="0.001"
+                   value="${settings.sensitivity}">
+        </label>
+
+        <label>
+            <input id="v4Invert"
+                   type="checkbox"
+                   ${settings.invertY?"checked":""}>
+            Invert Y
+        </label>
+
+        <label>
+            <input id="v4Auto"
+                   type="checkbox"
+                   ${settings.autoPickup?"checked":""}>
+            Auto Pickup
+        </label>
+
+        <h3>✨ EFFECTS</h3>
+
+        <label>
+            <input id="v4Shake"
+                   type="checkbox"
+                   ${settings.cameraShake?"checked":""}>
+            Camera Shake
+        </label>
+
+        <label>
+            <input id="v4Damage"
+                   type="checkbox"
+                   ${settings.damageNumbers?"checked":""}>
+            Damage Numbers
+        </label>
+
+        <label>
+            View Distance
+            <input id="v4View"
+                   type="range"
+                   min="40"
+                   max="180"
+                   step="10"
+                   value="${settings.viewDistance}">
+        </label>
+
+        <h3>🔊 AUDIO</h3>
+
+        <label>
+            Ambient
+            <input id="v4Ambient"
+                   type="range"
+                   min="0"
+                   max="100"
+                   value="${settings.ambient}">
+        </label>
+
+        <label>
+            <input id="v4Mute"
+                   type="checkbox"
+                   ${settings.mute?"checked":""}>
+            Mute
+        </label>
+
+    `;
+
+    panel.appendChild(box);
+
+    function saveSettings4(){
+
+        if(typeof saveGame==="function")
+            saveGame();
+
+        if(typeof applyUI==="function")
+            applyUI();
+
+    }
+
+    box.querySelector("#v4JoySize").oninput=function(){
+        settings.joystickSize=Number(this.value);
+        saveSettings4();
+    };
+
+    box.querySelector("#v4BtnSize").oninput=function(){
+        settings.buttonSize=Number(this.value);
+        saveSettings4();
+    };
+
+    box.querySelector("#v4Sens").oninput=function(){
+        settings.sensitivity=Number(this.value);
+    };
+
+    box.querySelector("#v4Invert").onchange=function(){
+        settings.invertY=this.checked;
+        saveSettings4();
+    };
+
+    box.querySelector("#v4Auto").onchange=function(){
+        settings.autoPickup=this.checked;
+        saveSettings4();
+    };
+
+    box.querySelector("#v4Shake").onchange=function(){
+        settings.cameraShake=this.checked;
+        saveSettings4();
+    };
+
+    box.querySelector("#v4Damage").onchange=function(){
+        settings.damageNumbers=this.checked;
+        saveSettings4();
+    };
+
+    box.querySelector("#v4View").oninput=function(){
+        settings.viewDistance=Number(this.value);
+
+        if(typeof camera!=="undefined" && camera)
+            camera.far=settings.viewDistance;
+
+        if(typeof camera!=="undefined" && camera)
+            camera.updateProjectionMatrix();
+    };
+
+    box.querySelector("#v4Ambient").oninput=function(){
+        settings.ambient=Number(this.value);
+    };
+
+    box.querySelector("#v4Mute").onchange=function(){
+        settings.mute=this.checked;
+        saveSettings4();
+    };
+
+};
+
+/* =========================================================
+   WATCH SETTINGS PANEL
+========================================================= */
+
+setInterval(function(){
+
+    var panel=document.getElementById("panel");
+
+    if(
+        panel &&
+        typeof settings!=="undefined"
+    ){
+
+        V4.addExtraSettings();
+
+    }
+
+},300);
+
+/* =========================================================
+   UI SIZE SYSTEM
+========================================================= */
+
+V4.applyControlScale=function(){
+
+    if(typeof settings==="undefined") return;
+
+    var js=document.querySelector(
+        "#joystick,.joystick,#stick"
+    );
+
+    if(js){
+
+        var s=
+            Number(settings.joystickSize||1)*
+            Number(settings.uiScale||1);
+
+        js.style.transform="scale("+s+")";
+        js.style.transformOrigin="center";
+
+    }
+
+    var buttons=document.querySelectorAll(
+        "#run,#jump,#action,#fish,"+
+        ".controlBtn,.gameBtn"
+    );
+
+    buttons.forEach(function(b){
+
+        var s=
+            Number(settings.buttonSize||1)*
+            Number(settings.uiScale||1);
+
+        b.style.transformOrigin="center";
+        b.style.scale=s;
+
+    });
+
+};
+
+var V4_oldApplyUI=
+    typeof applyUI==="function"
+    ?applyUI:null;
+
+if(V4_oldApplyUI){
+
+    applyUI=function(){
+
+        V4_oldApplyUI();
+
+        setTimeout(
+            V4.applyControlScale,
+            20
+        );
+
+    };
+
+}
+
+/* =========================================================
+   GRAPHICS APPLY
+========================================================= */
+
+V4.applyGraphics=function(){
+
+    if(typeof renderer==="undefined" || !renderer)
+        return;
+
+    var quality=
+        settings.graphics||"High";
+
+    var ratio=
+        window.devicePixelRatio||1;
+
+    if(quality==="Low")
+        ratio=Math.min(ratio,1);
+
+    if(quality==="Medium")
+        ratio=Math.min(ratio,1.5);
+
+    if(quality==="High")
+        ratio=Math.min(ratio,2);
+
+    renderer.setPixelRatio(ratio);
+
+    renderer.setSize(
+        innerWidth,
+        innerHeight,
+        false
+    );
+
+    if(typeof camera!=="undefined" && camera){
+
+        camera.far=
+            Number(settings.viewDistance||100);
+
+        camera.updateProjectionMatrix();
+
+    }
+
+    if(renderer.shadowMap){
+
+        renderer.shadowMap.enabled=
+            settings.shadow!==false;
+
+    }
+
+};
+
+var V4_oldInitThree=
+    typeof initThree==="function"
+    ?initThree:null;
+
+if(V4_oldInitThree){
+
+    initThree=function(){
+
+        V4_oldInitThree();
+
+        setTimeout(
+            V4.applyGraphics,
+            50
+        );
+
+    };
+
+}
+
+/* =========================================================
+   AUTO PICKUP
+========================================================= */
+
+V4.autoPickup=function(){
+
+    if(
+        typeof settings==="undefined" ||
+        !settings.autoPickup ||
+        typeof findNearest!=="function" ||
+        typeof gather!=="function" ||
+        typeof player==="undefined" ||
+        !player
+    ) return;
+
+    var n=findNearest();
+
+    if(!n) return;
+
+    var d=player.position.distanceTo(
+        n.position
+    );
+
+    if(d<1.8){
+
+        gather();
+
+    }
+
+};
+
+setInterval(function(){
+
+    if(
+        typeof gameStarted!=="undefined" &&
+        gameStarted &&
+        !paused
+    ){
+
+        V4.autoPickup();
+
+    }
+
+},700);
+
+/* =========================================================
+   WATER EXTRA ANIMATION
+========================================================= */
+
+V4.waterTime=0;
+
+setInterval(function(){
+
+    if(
+        typeof ocean==="undefined" ||
+        !ocean ||
+        typeof gameStarted==="undefined" ||
+        !gameStarted ||
+        paused
+    ) return;
+
+    V4.waterTime+=.08;
+
+    ocean.rotation.z=
+        Math.sin(V4.waterTime*.3)*.002;
+
+    ocean.position.y=
+        Math.sin(V4.waterTime)*.025;
+
+},80);
+
+/* =========================================================
+   ANIMAL INTERACTION
+========================================================= */
+
+V4.attackAnimal=function(){
+
+    if(
+        typeof animals==="undefined" ||
+        !animals.length ||
+        typeof player==="undefined" ||
+        !player
+    ) return false;
+
+    var nearest=null;
+    var dist=999;
+
+    animals.forEach(function(a){
+
+        if(!a.visible) return;
+
+        var d=player.position.distanceTo(
+            a.position
+        );
+
+        if(d<dist){
+
+            dist=d;
+            nearest=a;
+
+        }
+
+    });
+
+    if(!nearest || dist>3)
+        return false;
+
+    nearest.userData.hp=
+        (nearest.userData.hp||10)-10;
+
+    if(
+        typeof VIS3!=="undefined" &&
+        VIS3.floatText
+    ){
+
+        VIS3.floatText(
+            "-10",
+            "#ff7777"
+        );
+
+    }
+
+    if(
+        typeof VIS3!=="undefined" &&
+        VIS3.addShake
+    ){
+
+        VIS3.addShake(.08);
+
+    }
+
+    if(nearest.userData.hp<=0){
+
+        nearest.visible=false;
+
+        if(typeof save!=="undefined"){
+
+            save.fish=
+                Number(save.fish||0);
+
+            toast("🐾 Hewan dikalahkan");
+
+            if(typeof saveGame==="function")
+                saveGame();
+
+        }
+
+    }else{
+
+        toast("💥 Serangan mengenai hewan!");
+
+    }
+
+    return true;
+
+};
+
+/* =========================================================
+   ACTION PATCH
+   First animal attack, otherwise normal gather
+========================================================= */
+
+if(typeof gather==="function"){
+
+    var V4_oldGather=gather;
+
+    gather=function(){
+
+        if(V4.attackAnimal())
+            return;
+
+        V4_oldGather();
+
+    };
+
+}
+
+/* =========================================================
+   DAY/NIGHT FIRE ANIMATION
+========================================================= */
+
+V4.animateBuildings=function(){
+
+    if(
+        typeof scene==="undefined" ||
+        !scene
+    ) return;
+
+    scene.traverse(function(o){
+
+        if(!o.userData) return;
+
+        if(o.userData.type==="campfire"){
+
+            o.children.forEach(function(c){
+
+                if(
+                    c.geometry &&
+                    c.geometry.type==="ConeGeometry"
+                ){
+
+                    c.scale.y=
+                        .9+
+                        Math.sin(
+                            performance.now()*.012
+                        )*.15;
+
+                }
+
+            });
+
+        }
+
+    });
+
+};
+
+setInterval(
+    V4.animateBuildings,
+    100
+);
+
+/* =========================================================
+   QUEST / STORY PROGRESS FEEDBACK
+========================================================= */
+
+V4.lastQuest=-1;
+
+setInterval(function(){
+
+    if(
+        typeof save==="undefined" ||
+        typeof gameStarted==="undefined" ||
+        !gameStarted
+    ) return;
+
+    if(save.quest!==V4.lastQuest){
+
+        if(V4.lastQuest>=0){
+
+            toast(
+                "📜 QUEST PROGRESS: "+
+                save.quest
+            );
+
+            if(
+                typeof VIS3!=="undefined" &&
+                VIS3.addShake
+            )
+                VIS3.addShake(.04);
+
+        }
+
+        V4.lastQuest=save.quest;
+
+    }
+
+},500);
+
+/* =========================================================
+   ACHIEVEMENT EXTRA
+========================================================= */
+
+setInterval(function(){
+
+    if(
+        typeof save==="undefined" ||
+        !save.achievements
+    ) return;
+
+    if(
+        save.chapter>=5 &&
+        !save.achievements.includes("ISLAND LEGEND")
+    ){
+
+        if(typeof unlockAchievement==="function"){
+
+            unlockAchievement(
+                "ISLAND LEGEND",
+                "Menyelesaikan seluruh perjalanan pulau"
+            );
+
+        }
+
+    }
+
+},5000);
+
+/* =========================================================
+   SAVE VERSION
+========================================================= */
+
+if(typeof save!=="undefined"){
+
+    save.version=4;
+
+}
+
+/* =========================================================
+   INITIAL APPLY
+========================================================= */
+
+setTimeout(function(){
+
+    try{
+
+        V4.applyGraphics();
+        V4.applyControlScale();
+
+    }catch(e){
+
+        console.warn(
+            "VALEN BLOCK 4:",
+            e
+        );
+
+    }
+
+},1200);
+
+console.log(
+    "VALEN ISLAND SURVIVAL — BLOCK 4 LOADED"
+);
+
+})();
