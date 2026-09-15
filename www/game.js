@@ -93,6 +93,8 @@ canvas{position:fixed;inset:0;display:block}
 #danger{position:fixed;inset:0;pointer-events:none;z-index:101;border:0 solid #f33;transition:border-width .2s}
 #toast{position:fixed;left:50%;bottom:12%;transform:translate(-50%,20px);opacity:0;background:#071923dd;color:#fff;padding:12px 18px;border-radius:14px;z-index:9999;transition:.2s;font-weight:bold;pointer-events:none}
 #toast.show{opacity:1;transform:translate(-50%,0)}
+#mp{position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:300;color:#fff;background:rgba(3,14,20,.72);padding:7px 12px;border:1px solid #ffffff20;border-radius:999px;font-size:12px;font-weight:bold;backdrop-filter:blur(8px);pointer-events:none}
+#mpList{position:fixed;left:18px;top:145px;z-index:300;color:#dff;background:rgba(3,14,20,.58);padding:7px 10px;border-radius:10px;font-size:12px;max-width:190px;pointer-events:none}
 @media(max-height:500px){#top{transform:scale(.82);transform-origin:top left}#quest{transform:scale(.82);transform-origin:top right}.ctrl{transform:scale(.9)}}
 `;
 document.head.appendChild(style);
@@ -108,6 +110,8 @@ const hud=document.createElement("div");hud.id="hud";hud.innerHTML=`
 <button id="build" class="ctrl">🔨</button><button id="attack" class="ctrl">⚔</button>
 </div>`;
 document.body.appendChild(hud);
+const mpStatus=document.createElement("div");mpStatus.id="mp";mpStatus.textContent="🟡 MULTIPLAYER: CONNECTING";document.body.appendChild(mpStatus);
+const mpList=document.createElement("div");mpList.id="mpList";mpList.textContent="Players: 1";document.body.appendChild(mpList);
 const wrap=document.createElement("div");wrap.id="panelWrap";wrap.innerHTML=`<div id="panel"><h2>⚙ SETTINGS</h2><div id="settingsContent"></div><button id="closePanel" style="margin-top:12px;width:100%;padding:13px;border:0;border-radius:12px">CLOSE</button></div>`;document.body.appendChild(wrap);
 const menu=document.createElement("div");menu.id="menu";menu.innerHTML=`<div class="card menu"><h1>VALEN ISLAND</h1><p>3D Tropical Survival</p><button id="continue">CONTINUE</button><button id="newgame">NEW GAME</button><p style="font-size:12px">Landscape • Touch • Autosave</p></div>`;document.body.appendChild(menu);
 const bm=document.createElement("div");bm.id="buildMenu";bm.innerHTML=`<div class="card menu"><h2>🔨 CRAFT & BUILD</h2><div class="grid">
@@ -144,23 +148,23 @@ const objects=[],resources=[],animals=[],buildings=[],rain=[];
 function addObj(o,type,x,z,extra={}){
   o.position.set(x,extra.y||0,z);o.userData=Object.assign({type},extra);scene.add(o);objects.push(o);return o;
 }
-function insideIsland(x,z){return (x*x)/(29*29)+(z*z)/(32*32)<1}
+function insideIsland(x,z){return (x*x)/(290*290)+(z*z)/(320*320)<1}
 
 function palm(x,z,scale=1){
   const g=new T.Group();const trunk=cyl(.38,5,0x8a5a31,7);trunk.position.y=2.5;trunk.rotation.z=rnd(-.06,.06);g.add(trunk);
   for(let i=0;i<7;i++){const leaf=new T.Mesh(new T.ConeGeometry(.35,5,5),mat(0x1c7b3e));leaf.position.y=5.1;leaf.rotation.z=Math.PI/2;leaf.rotation.y=i*Math.PI*2/7;leaf.translateX(1.8);g.add(leaf)}
   g.scale.setScalar(scale);g.userData={type:"palm",phase:rnd(0,6)};scene.add(g);objects.push(g);
 }
-for(let i=0;i<16;i++){let a=rnd(0,Math.PI*2),r=rnd(10,26);palm(Math.cos(a)*r,Math.sin(a)*r,rnd(.8,1.2))}
-for(let i=0;i<15;i++){let a=rnd(0,6.28),r=rnd(4,25),x=Math.cos(a)*r,z=Math.sin(a)*r;
+for(let i=0;i<140;i++){let a=rnd(0,Math.PI*2),r=rnd(35,275);palm(Math.cos(a)*r,Math.sin(a)*r,rnd(.75,1.25))}
+for(let i=0;i<100;i++){let a=rnd(0,6.28),r=rnd(20,275),x=Math.cos(a)*r,z=Math.sin(a)*r;
  if(!insideIsland(x,z))continue;
  const g=new T.Group();const tr=cyl(.45,3.2,0x67442a,8);tr.position.y=1.6;g.add(tr);
  const crown=new T.Mesh(new T.IcosahedronGeometry(2.0,1),mat(pick([0x287342,0x2d8b48,0x3d9b52])));crown.position.y=3.2;g.add(crown);
  addObj(g,"tree",x,z,{hp:3,resource:"wood"});
 }
-for(let i=0;i<18;i++){let a=rnd(0,6.28),r=rnd(5,29),x=Math.cos(a)*r,z=Math.sin(a)*r;if(!insideIsland(x,z))continue;
+for(let i=0;i<150;i++){let a=rnd(0,6.28),r=rnd(20,290),x=Math.cos(a)*r,z=Math.sin(a)*r;if(!insideIsland(x,z))continue;
  const o=new T.Mesh(new T.DodecahedronGeometry(rnd(.45,.8),0),mat(0x6d7074));addObj(o,"rock",x,z,{hp:2,resource:"stone"});}
-for(let i=0;i<14;i++){let a=rnd(0,6.28),r=rnd(7,28),x=Math.cos(a)*r,z=Math.sin(a)*r;if(!insideIsland(x,z))continue;
+for(let i=0;i<100;i++){let a=rnd(0,6.28),r=rnd(25,285),x=Math.cos(a)*r,z=Math.sin(a)*r;if(!insideIsland(x,z))continue;
  const o=new T.Mesh(new T.IcosahedronGeometry(.75,1),mat(0x9b3e4d));addObj(o,"berry",x,z,{resource:"berries"});}
 
 const ruins=new T.Group();for(let i=0;i<6;i++){let p=box(2.2,4+rnd(0,3),1,0x70665a);p.position.set((i-3)*3,2,rnd(-2,2));p.rotation.y=rnd(0,.4);ruins.add(p)}ruins.position.set(-210,0,-175);scene.add(ruins);
@@ -184,8 +188,8 @@ function animal(type,x,z){
  g.position.set(x,0,z);g.userData={type,hp:type==="boar"?30:10,dir:rnd(0,6.28),speed:type==="boar"?1.2:.8,next:0,alive:true};
  scene.add(g);animals.push(g);
 }
-for(let i=0;i<5;i++){let a=rnd(0,6.28),r=rnd(9,25);animal("boar",Math.cos(a)*r,Math.sin(a)*r)}
-for(let i=0;i<3;i++){let a=rnd(0,6.28),r=rnd(15,30);animal("crab",Math.cos(a)*r,Math.sin(a)*r)}
+for(let i=0;i<30;i++){let a=rnd(0,6.28),r=rnd(30,275);animal("boar",Math.cos(a)*r,Math.sin(a)*r)}
+for(let i=0;i<18;i++){let a=rnd(0,6.28),r=rnd(40,310);animal("crab",Math.cos(a)*r,Math.sin(a)*r)}
 
 /* ---------- BUILDING ---------- */
 function build(type){
@@ -272,7 +276,7 @@ function attack(){
 }
 function fish(){
  const r=Math.hypot(player.position.x,player.position.z);
- if(r>300){toast("🌊 Dekati air / pantai untuk memancing");return}
+ if(r<255){toast("🌊 Dekati pantai untuk memancing");return}
  if(save.stone<0)return;
  const chance=Math.random();
  if(chance<.12){save.fish++;save.fishCaught++;toast("🎣 Rare fish! +1");}
@@ -324,7 +328,7 @@ function checkAchievements(){
 }
 
 /* ---------- BEACON ---------- */
-const beacon=new T.Group();beacon.position.set(-13,0,-11);
+const beacon=new T.Group();beacon.position.set(-210,0,-175);
 const bbase=cyl(1.2,.4,0x343434,10);bbase.position.y=.2;beacon.add(bbase);
 const pole=cyl(.12,5,0x55585c,8);pole.position.y=2.5;beacon.add(pole);
 const lamp=new T.Mesh(new T.SphereGeometry(.45,12,8),new T.MeshStandardMaterial({color:0x8ffaff,emissive:0x3aefff,emissiveIntensity:4}));lamp.position.y=5;beacon.add(lamp);
@@ -367,7 +371,7 @@ function updatePlayer(dt){
    const fx=-Math.sin(yaw),fz=-Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
    player.position.x+=(rx*moveX+fx*(-moveY))*sp*dt;
    player.position.z+=(rz*moveX+fz*(-moveY))*sp*dt;
-   player.rotation.y=Math.atan2(player.position.x-(player.position.x-(rx*moveX+fx*(-moveY))),player.position.z-(player.position.z-(rz*moveX+fz*(-moveY))));
+   const vx=rx*moveX+fx*(-moveY),vz=rz*moveX+fz*(-moveY);player.rotation.y=Math.atan2(vx,vz);
    save.stamina=clamp(save.stamina-(running?12:4)*dt,0,100);
  }else save.stamina=clamp(save.stamina+16*dt,0,100);
  if(running&&save.stamina<3)running=false;
@@ -446,6 +450,78 @@ function updateHUD(){
 }
 setInterval(updateHUD,250);setInterval(minimap,100);
 
+/* ---------- APINATOR MULTIPLAYER ---------- */
+const APINATOR_KEY="app_8eadf18bc5b4e71dd4df3ce3cf23da64a7e87578";
+const APINATOR_CLUSTER="us";
+const MP_AUTH_KEY="VALEN_MP_AUTH_URL";
+const MP_ROOM_KEY="VALEN_MP_ROOM";
+const MP_NAME_KEY="VALEN_MP_NAME";
+const MP_DEFAULT_ROOM=localStorage.getItem(MP_ROOM_KEY)||"main";
+const MP={client:null,channel:null,connected:false,id:localStorage.getItem("VALEN_MP_ID")||crypto.randomUUID(),remote:new Map(),lastSend:0,room:MP_DEFAULT_ROOM,name:localStorage.getItem(MP_NAME_KEY)||("Survivor-"+Math.floor(100+Math.random()*900)),auth:localStorage.getItem(MP_AUTH_KEY)||"",starting:false};
+function mpSetStatus(text,ok=false){mpStatus.textContent=(ok?"🟢 ":"🟡 ")+text;mpStatus.style.borderColor=ok?"#2ee78a66":"#ffffff20"}
+function mpData(v){if(typeof v!=="string")return v;try{return JSON.parse(v)}catch(_){return null}}
+function mpColor(id){let n=0;for(let i=0;i<id.length;i++)n=(n*31+id.charCodeAt(i))>>>0;return [0x36a3ff,0xff6b8a,0xffc857,0x67e8a5,0xc084fc,0x22d3ee][n%6]}
+function makeRemote(id,name,color){
+  if(MP.remote.has(id))return MP.remote.get(id);
+  const g=new T.Group();
+  const b=cyl(.55,1.35,color||mpColor(id),10);b.position.y=1;g.add(b);
+  const h=new T.Mesh(new T.SphereGeometry(.5,12,10),mat(0xf0b27a));h.position.y=2.05;g.add(h);
+  const label=textSprite(name||"Player","#ffffff",34);label.position.y=3.05;label.scale.set(2.7,.7,1);g.add(label);
+  g.position.set(0,0,0);g.userData={id,name:name||"Player",target:new T.Vector3(),targetY:0,lastSeen:performance.now()};scene.add(g);MP.remote.set(id,g);return g;
+}
+function removeRemote(id){const g=MP.remote.get(id);if(!g)return;scene.remove(g);MP.remote.delete(id)}
+function applyRemote(id,d){if(!d||id===MP.id)return;const g=makeRemote(id,d.name,d.color);g.userData.target.set(Number(d.x)||0,0,Number(d.z)||0);g.userData.targetY=Number(d.ry)||0;g.userData.lastSeen=performance.now()}
+function clearRemotes(){for(const id of MP.remote.keys())removeRemote(id)}
+function mpRoster(){mpList.textContent="Players: "+(MP.remote.size+1);}
+function mpBind(channel){
+  MP.channel=channel;
+  channel.bind("client-move",(data,meta)=>{
+    const d=mpData(data)||{};const id=meta?.sender_id||meta?.user_id||d.id;if(id)applyRemote(id,d);
+  });
+  channel.bind("realtime:subscription_succeeded",members=>{
+    try{
+      if(members&&typeof members.each==="function")members.each(m=>{if(m.id!==MP.id)makeRemote(m.id,m.info?.name||"Player",m.info?.color)})
+      else if(members?.members)Object.entries(members.members).forEach(([id,m])=>{if(id!==MP.id)makeRemote(id,m.info?.name||"Player",m.info?.color)})
+    }catch(_){} mpRoster();mpSetStatus("ONLINE • "+MP.room,true);
+  });
+  channel.bind("realtime:member_added",m=>{if(m?.id!==MP.id){makeRemote(m.id,m.info?.name||"Player",m.info?.color);mpRoster();}});
+  channel.bind("realtime:member_removed",m=>{if(m?.id){removeRemote(m.id);mpRoster();}});
+  channel.bind("realtime:subscription_error",()=>mpSetStatus("AUTH ERROR"));
+}
+async function connectMultiplayer(){
+  if(MP.starting||MP.connected)return;
+  MP.starting=true;mpSetStatus("CONNECTING...");
+  try{
+    if(!MP.auth){throw new Error("NO_AUTH_URL")}
+    let mod=null;
+    if(window.Apinator)mod={Apinator:window.Apinator};
+    else mod=await import("https://esm.sh/@apinator/client");
+    const ApinatorCtor=mod.Apinator||mod.default?.Apinator||mod.default;
+    if(typeof ApinatorCtor!=="function")throw new Error("SDK_NOT_FOUND");
+    MP.client=new ApinatorCtor({appKey:APINATOR_KEY,cluster:APINATOR_CLUSTER,authEndpoint:MP.auth,authHeaders:{"X-Player-Id":MP.id,"X-Player-Name":MP.name,"X-Player-Color":String(mpColor(MP.id))},enableReconnect:true,maxReconnectAttempts:20});
+    MP.client.connect();
+    const ch=MP.client.subscribe("presence-valen-"+MP.room.replace(/[^a-zA-Z0-9_-]/g,"-"));
+    mpBind(ch);MP.connected=true;
+    setTimeout(()=>{if(MP.connected)mpSetStatus("ONLINE • "+MP.room,true)},1200);
+  }catch(e){
+    console.warn("Apinator multiplayer:",e);MP.connected=false;mpSetStatus("OFFLINE • SOLO");
+  }finally{MP.starting=false}
+}
+function disconnectMultiplayer(){try{MP.client?.disconnect()}catch(_){}MP.client=null;MP.channel=null;MP.connected=false;clearRemotes();mpRoster();mpSetStatus("OFFLINE • SOLO")}
+function sendMP(){
+  if(!MP.connected||!MP.channel||performance.now()-MP.lastSend<70)return;
+  MP.lastSend=performance.now();
+  try{MP.channel.trigger("client-move",{id:MP.id||"",name:MP.name,x:+player.position.x.toFixed(2),z:+player.position.z.toFixed(2),ry:+player.rotation.y.toFixed(3),color:mpColor(MP.name)})}catch(e){console.warn(e)}
+}
+function animateRemote(dt){
+  const now=performance.now();
+  MP.remote.forEach((g,id)=>{
+    const age=now-g.userData.lastSeen;
+    if(age>10000){removeRemote(id);return}
+    g.position.lerp(g.userData.target,Math.min(1,dt*10));
+    g.rotation.y+=((g.userData.targetY-g.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI;
+  });mpRoster();
+}
 /* ---------- SETTINGS ---------- */
 function renderSettings(){
  const c=document.getElementById("settingsContent");
@@ -465,10 +541,18 @@ function renderSettings(){
  <div class="row">SFX <input id="sSfx" type="range" min="0" max="100" value="${settings.sfx}"></div>
  <div class="row">Ambient <input id="sAmb" type="range" min="0" max="100" value="${settings.ambient}"></div>
  <div class="row">Mute <input id="sMute" type="checkbox" ${settings.mute?"checked":""}></div>
- <div class="panelBtns"><button id="eat">🍳 Eat Cooked Fish</button><button id="drink">🥥 Drink Coconut</button><button id="saveBtn">💾 Save</button><button id="resetBtn">♻ Reset Save</button></div>`;
+ <div class="row">MP Auth URL <input id="sMpAuth" type="text" value="${MP.auth.replace(/&/g,"&amp;").replace(/"/g,"&quot;")}" placeholder="https://server.com/auth/channel" style="width:55%"></div>
+ <div class="row">MP Room <input id="sMpRoom" type="text" value="${MP.room}" maxlength="24" style="width:55%"></div>
+ <div class="row">Player Name <input id="sMpName" type="text" value="${MP.name}" maxlength="20" style="width:55%"></div>
+ <div class="panelBtns"><button id="mpConnect">🟢 Connect Multiplayer</button><button id="mpDisconnect">⚪ Solo Mode</button><button id="eat">🍳 Eat Cooked Fish</button><button id="drink">🥥 Drink Coconut</button><button id="saveBtn">💾 Save</button><button id="resetBtn">♻ Reset Save</button></div>`;
  c.querySelector("#sLang").value=settings.language;c.querySelector("#sQ").value=settings.quality;
  const bind=(id,key,type="value")=>c.querySelector(id).addEventListener(type==="checked"?"change":"input",e=>{settings[key]=type==="checked"?e.target.checked:Number(e.target.value);if(type==="value"&&key==="sensitivity")settings[key]=Number(e.target.value);applySettings();saveGame()});
  bind("#sSens","sensitivity");bind("#sInv","invertY","checked");bind("#sJoy","joystickSize");bind("#sBtn","buttonSize");bind("#sAuto","autoPickup","checked");bind("#sShake","cameraShake","checked");bind("#sDmg","damageNumbers","checked");bind("#sView","viewDistance");bind("#sShadow","shadows","checked");bind("#sMaster","master");bind("#sSfx","sfx");bind("#sAmb","ambient");bind("#sMute","mute","checked");
+ c.querySelector("#sMpAuth").onchange=e=>{MP.auth=e.target.value.trim();localStorage.setItem(MP_AUTH_KEY,MP.auth)};
+ c.querySelector("#sMpRoom").onchange=e=>{MP.room=(e.target.value.trim()||"main").slice(0,24);localStorage.setItem(MP_ROOM_KEY,MP.room)};
+ c.querySelector("#sMpName").onchange=e=>{MP.name=(e.target.value.trim()||"Survivor").slice(0,20);localStorage.setItem(MP_NAME_KEY,MP.name)};
+ c.querySelector("#mpConnect").onclick=()=>{MP.auth=c.querySelector("#sMpAuth").value.trim();MP.room=(c.querySelector("#sMpRoom").value.trim()||"main").slice(0,24);MP.name=(c.querySelector("#sMpName").value.trim()||"Survivor").slice(0,20);localStorage.setItem(MP_AUTH_KEY,MP.auth);localStorage.setItem(MP_ROOM_KEY,MP.room);localStorage.setItem(MP_NAME_KEY,MP.name);connectMultiplayer();toast("🌐 Menghubungkan multiplayer...")};
+ c.querySelector("#mpDisconnect").onclick=()=>{disconnectMultiplayer();toast("🎮 Solo mode")};
  c.querySelector("#sQ").onchange=e=>{settings.quality=e.target.value;applySettings();saveGame()};c.querySelector("#sLang").onchange=e=>{settings.language=e.target.value;saveGame()};
  c.querySelector("#eat").onclick=()=>{if(save.cookedFish){save.cookedFish--;save.hunger=clamp(save.hunger+30,0,100);saveGame();toast("🍳 +30 Hunger");renderSettings()}};
  c.querySelector("#drink").onclick=()=>{if(save.coconut){save.coconut--;save.thirst=clamp(save.thirst+30,0,100);saveGame();toast("🥥 +30 Thirst");renderSettings()}};
@@ -497,13 +581,13 @@ if(!started){menu.style.display="grid"}else startAudio();
 let last=performance.now(),fpsAcc=0,fpsFrames=0;
 function loop(now){
  requestAnimationFrame(loop);let dt=Math.min(.05,(now-last)/1000);last=now;
- updatePlayer(dt);updateCamera(dt);survival(dt);updateWeather(dt);animateWorld(dt);
+ updatePlayer(dt);updateCamera(dt);survival(dt);updateWeather(dt);animateWorld(dt);animateRemote(dt);sendMP();
  if(save.ended)beacon.visible=true;
  fpsAcc+=dt;fpsFrames++;
  renderer.render(scene,camera);
 }
 requestAnimationFrame(loop);
 window.addEventListener("resize",()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight,false)});
-applySettings();updateHUD();makeToast();saveGame();
+applySettings();updateHUD();makeToast();saveGame();if(MP.auth)setTimeout(connectMultiplayer,1200);
 console.log("VALEN ISLAND SURVIVAL — FINAL BUILD LOADED");
 })();
