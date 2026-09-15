@@ -1,37 +1,31 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <title>NEBULA X</title>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width,
+    initial-scale=1,
+    maximum-scale=1,
+    user-scalable=no,
+    viewport-fit=cover"
+  >
+
+  <meta name="theme-color" content="#071923">
+
+  <title>Valen Island Survival</title>
+
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div id="hud">
-    <div class="top">
-      <div class="brand">NEBULA <b>X</b></div>
-      <div class="stats">
-        <span>SCORE <b id="score">0</b></span>
-        <span>BEST <b id="best">0</b></span>
-      </div>
-    </div>
-    <div class="shield"><div id="shieldBar"></div></div>
-  </div>
 
-  <div id="crosshair">+</div>
-  <div id="joystick"><div id="stick"></div></div>
-  <button id="boost">BOOST</button>
-  <button id="fire">FIRE</button>
-
-  <div id="gameOver" class="hidden">
-    <div class="panel">
-      <div class="over-title">SYSTEM FAILURE</div>
-      <div class="final">SCORE <b id="finalScore">0</b></div>
-      <button id="restart">RESTART</button>
-    </div>
-  </div>
-
+  <!-- Three.js -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+  <!-- Game -->
   <script src="game.js"></script>
+
 </body>
 </html>
