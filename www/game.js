@@ -2515,3 +2515,1304 @@ function animate(){
 // ------------------------------------------------------------
 // INITIAL
 // ------------------------------------------------------------
+// ============================================================
+// BLOCK 2
+// WORLD SYSTEM + BUILDING + COOKING + ANIMALS + WEATHER
+// MINIMAP + ACHIEVEMENTS + STORY + RARE RESOURCES
+// ============================================================
+
+(function(){
+
+    // --------------------------------------------------------
+    // BLOCK 2 SAVE DATA
+    // --------------------------------------------------------
+
+    save.buildings = save.buildings || [];
+    save.cookedFish = save.cookedFish || 0;
+    save.cookedBerry = save.cookedBerry || 0;
+    save.rareCrystal = save.rareCrystal || 0;
+    save.achievements = save.achievements || [];
+    save.chapter = save.chapter || 1;
+    save.weather = save.weather || "clear";
+
+    // --------------------------------------------------------
+    // EXTRA STYLE
+    // --------------------------------------------------------
+
+    const b2style=document.createElement("style");
+
+    b2style.textContent=`
+
+    #b2mini{
+        position:fixed;
+        z-index:25;
+        right:18px;
+        top:92px;
+        width:145px;
+        height:145px;
+        border-radius:16px;
+        background:rgba(3,15,20,.78);
+        border:2px solid rgba(255,255,255,.18);
+        box-shadow:0 8px 25px rgba(0,0,0,.3);
+        pointer-events:none;
+    }
+
+    #b2mini canvas{
+        position:absolute;
+        inset:0;
+        width:100%;
+        height:100%;
+        border-radius:14px;
+    }
+
+    #b2weather{
+        position:fixed;
+        z-index:24;
+        left:50%;
+        top:68px;
+        transform:translateX(-50%);
+        color:white;
+        padding:7px 14px;
+        border-radius:18px;
+        background:rgba(0,0,0,.38);
+        font-size:13px;
+        pointer-events:none;
+    }
+
+    #b2build{
+        right:28vw;
+        bottom:7vh;
+        display:none;
+    }
+
+    #b2cook{
+        right:39vw;
+        bottom:7vh;
+        display:none;
+    }
+
+    #b2story{
+        position:fixed;
+        inset:0;
+        z-index:600;
+        display:none;
+        align-items:center;
+        justify-content:center;
+        background:rgba(0,0,0,.72);
+        color:white;
+        padding:30px;
+    }
+
+    #b2storyBox{
+        width:min(620px,90vw);
+        background:rgba(5,22,29,.97);
+        border:1px solid rgba(255,255,255,.15);
+        border-radius:22px;
+        padding:28px;
+        text-align:center;
+        box-shadow:0 15px 50px rgba(0,0,0,.5);
+    }
+
+    #b2storyBox h2{
+        margin-top:0;
+        color:#55d6a6;
+    }
+
+    #b2ach{
+        position:fixed;
+        z-index:550;
+        left:50%;
+        top:12%;
+        transform:translateX(-50%) translateY(-20px);
+        opacity:0;
+        background:rgba(8,27,34,.95);
+        border:1px solid rgba(85,214,166,.5);
+        color:white;
+        padding:14px 22px;
+        border-radius:18px;
+        transition:.35s;
+        pointer-events:none;
+        text-align:center;
+    }
+
+    #b2rain{
+        position:fixed;
+        inset:0;
+        z-index:15;
+        pointer-events:none;
+        display:none;
+        background:
+          repeating-linear-gradient(
+            105deg,
+            transparent 0px,
+            transparent 12px,
+            rgba(150,210,255,.22) 13px,
+            transparent 15px
+          );
+        animation:b2rainmove .35s linear infinite;
+    }
+
+    @keyframes b2rainmove{
+        from{transform:translateY(-30px)}
+        to{transform:translateY(30px)}
+    }
+
+    .b2Animal{
+        filter:drop-shadow(0 4px 4px rgba(0,0,0,.3));
+    }
+
+    `;
+
+    document.head.appendChild(b2style);
+
+    // --------------------------------------------------------
+    // EXTRA UI
+    // --------------------------------------------------------
+
+    let b2buildBtn;
+    let b2cookBtn;
+    let b2mini;
+    let b2miniCanvas;
+    let b2weather;
+    let b2rain;
+    let b2ach;
+
+    function b2CreateUI(){
+
+        if(document.getElementById("b2build"))
+            return;
+
+        b2buildBtn=makeButton("b2build","🏕️ BUILD");
+        b2cookBtn=makeButton("b2cook","🍳 COOK");
+
+        b2buildBtn.style.display="block";
+        b2cookBtn.style.display="block";
+
+        b2buildBtn.onclick=()=>{
+            if(editUI)return;
+            openBuildMenu();
+        };
+
+        b2cookBtn.onclick=()=>{
+            if(editUI)return;
+            openCookMenu();
+        };
+
+        b2weather=document.createElement("div");
+        b2weather.id="b2weather";
+        b2weather.textContent="☀️ CERAH";
+        document.body.appendChild(b2weather);
+
+        b2rain=document.createElement("div");
+        b2rain.id="b2rain";
+        document.body.appendChild(b2rain);
+
+        b2ach=document.createElement("div");
+        b2ach.id="b2ach";
+        document.body.appendChild(b2ach);
+
+        createMiniMap();
+
+        applyUI();
+    }
+
+    // --------------------------------------------------------
+    // MINIMAP
+    // --------------------------------------------------------
+
+    function createMiniMap(){
+
+        b2mini=document.createElement("div");
+        b2mini.id="b2mini";
+
+        b2miniCanvas=document.createElement("canvas");
+        b2miniCanvas.width=145;
+        b2miniCanvas.height=145;
+
+        b2mini.appendChild(b2miniCanvas);
+        document.body.appendChild(b2mini);
+    }
+
+    function updateMiniMap(){
+
+        if(!b2miniCanvas || !player)
+            return;
+
+        const c=b2miniCanvas;
+        const ctx=c.getContext("2d");
+
+        ctx.clearRect(0,0,145,145);
+
+        ctx.fillStyle="rgba(20,120,155,.65)";
+        ctx.fillRect(0,0,145,145);
+
+        // island
+        ctx.beginPath();
+        ctx.arc(72,72,48,0,Math.PI*2);
+        ctx.fillStyle="#4f9957";
+        ctx.fill();
+
+        // beach
+        ctx.beginPath();
+        ctx.arc(72,72,53,0,Math.PI*2);
+        ctx.strokeStyle="#e6d198";
+        ctx.lineWidth=5;
+        ctx.stroke();
+
+        // ruins
+        if(ruins){
+
+            const rx=72+(ruins.position.x/30)*53;
+            const rz=72+(ruins.position.z/30)*53;
+
+            ctx.fillStyle="#b7b7b7";
+            ctx.fillRect(rx-3,rz-3,6,6);
+        }
+
+        // resources
+        trees.forEach(t=>{
+
+            if(!t.visible)return;
+
+            const x=72+(t.position.x/30)*53;
+            const z=72+(t.position.z/30)*53;
+
+            ctx.fillStyle="#226d39";
+            ctx.fillRect(x-1,z-1,3,3);
+        });
+
+        rocks.forEach(r=>{
+
+            if(!r.visible)return;
+
+            const x=72+(r.position.x/30)*53;
+            const z=72+(r.position.z/30)*53;
+
+            ctx.fillStyle="#777";
+            ctx.fillRect(x-1,z-1,3,3);
+        });
+
+        // player
+        const px=72+(player.position.x/30)*53;
+        const pz=72+(player.position.z/30)*53;
+
+        ctx.beginPath();
+        ctx.arc(px,pz,5,0,Math.PI*2);
+        ctx.fillStyle="#ffffff";
+        ctx.fill();
+
+        ctx.strokeStyle="rgba(0,0,0,.6)";
+        ctx.stroke();
+    }
+
+    // --------------------------------------------------------
+    // BUILDING
+    // --------------------------------------------------------
+
+    function openBuildMenu(){
+
+        const p=openPanel("🏕️ BUILDING");
+
+        p.innerHTML+=`
+
+            <p>Bangun tempat bertahan hidup.</p>
+
+            <div class="row">
+                <span>🔥 Campfire</span>
+                <span>8 Wood • 4 Stone</span>
+            </div>
+
+            <button class="panelBtn primary" id="buildFire">
+                BUILD CAMPFIRE
+            </button>
+
+            <div class="row">
+                <span>🏠 Shelter</span>
+                <span>15 Wood • 8 Stone</span>
+            </div>
+
+            <button class="panelBtn primary" id="buildShelter">
+                BUILD SHELTER
+            </button>
+
+            <div class="row">
+                <span>📦 Storage</span>
+                <span>10 Wood • 5 Stone</span>
+            </div>
+
+            <button class="panelBtn primary" id="buildStorage">
+                BUILD STORAGE
+            </button>
+        `;
+
+        p.querySelector("#buildFire").onclick=()=>{
+            buildCampfire();
+            closePanel();
+        };
+
+        p.querySelector("#buildShelter").onclick=()=>{
+            buildShelter();
+            closePanel();
+        };
+
+        p.querySelector("#buildStorage").onclick=()=>{
+            buildStorage();
+            closePanel();
+        };
+    }
+
+    function buildCampfire(){
+
+        if(save.campfire){
+
+            toast("Campfire sudah dibangun 🔥");
+            return;
+        }
+
+        if(save.wood<8 || save.stone<4){
+
+            toast("Butuh 8 Wood + 4 Stone");
+            return;
+        }
+
+        save.wood-=8;
+        save.stone-=4;
+        save.campfire=true;
+
+        const g=new THREE.Group();
+
+        g.position.copy(player.position);
+        g.position.y=.1;
+
+        for(let i=0;i<6;i++){
+
+            const log=new THREE.Mesh(
+                new THREE.CylinderGeometry(.12,.12,1.2,7),
+                mat(0x704528)
+            );
+
+            log.rotation.z=Math.PI/2;
+            log.rotation.y=i*.5;
+
+            g.add(log);
+        }
+
+        const fire=new THREE.Mesh(
+            new THREE.ConeGeometry(.45,1.2,8),
+            mat(0xff7b21)
+        );
+
+        fire.position.y=.75;
+        g.add(fire);
+
+        g.userData.type="campfire";
+
+        scene.add(g);
+        save.buildings.push({
+            type:"campfire",
+            x:g.position.x,
+            z:g.position.z
+        });
+
+        toast("🔥 CAMPFIRE DIBANGUN!");
+
+        sound("success");
+        checkQuest();
+        saveGame();
+    }
+
+    function buildShelter(){
+
+        if(save.shelter){
+
+            toast("Shelter sudah dibangun 🏠");
+            return;
+        }
+
+        if(save.wood<15 || save.stone<8){
+
+            toast("Butuh 15 Wood + 8 Stone");
+            return;
+        }
+
+        save.wood-=15;
+        save.stone-=8;
+        save.shelter=true;
+
+        const g=new THREE.Group();
+
+        g.position.copy(player.position);
+        g.position.y=0;
+
+        // floor
+        const floor=new THREE.Mesh(
+            new THREE.BoxGeometry(4,.25,4),
+            mat(0x76502e)
+        );
+
+        floor.position.y=.15;
+        g.add(floor);
+
+        // roof
+        const roof=new THREE.Mesh(
+            new THREE.ConeGeometry(
+                3,
+                2.4,
+                4
+            ),
+            mat(0x8d5b31)
+        );
+
+        roof.rotation.y=Math.PI/4;
+        roof.position.y=2.7;
+        g.add(roof);
+
+        // posts
+        for(let x of [-1.7,1.7]){
+
+            for(let z of [-1.7,1.7]){
+
+                const post=new THREE.Mesh(
+                    new THREE.CylinderGeometry(.14,.18,2.5,6),
+                    mat(0x694526)
+                );
+
+                post.position.set(x,1.25,z);
+                g.add(post);
+            }
+        }
+
+        scene.add(g);
+
+        save.buildings.push({
+            type:"shelter",
+            x:g.position.x,
+            z:g.position.z
+        });
+
+        toast("🏠 SHELTER DIBANGUN!");
+
+        sound("success");
+        checkQuest();
+        saveGame();
+    }
+
+    function buildStorage(){
+
+        if(save.wood<10 || save.stone<5){
+
+            toast("Butuh 10 Wood + 5 Stone");
+            return;
+        }
+
+        save.wood-=10;
+        save.stone-=5;
+
+        const box=new THREE.Mesh(
+            new THREE.BoxGeometry(1.6,1,1.2),
+            mat(0x694526)
+        );
+
+        box.position.copy(player.position);
+        box.position.y=.65;
+
+        scene.add(box);
+
+        save.buildings.push({
+            type:"storage",
+            x:box.position.x,
+            z:box.position.z
+        });
+
+        toast("📦 STORAGE DIBANGUN!");
+
+        sound("success");
+        saveGame();
+    }
+
+    // --------------------------------------------------------
+    // COOKING
+    // --------------------------------------------------------
+
+    function openCookMenu(){
+
+        const p=openPanel("🍳 COOKING");
+
+        p.innerHTML+=`
+
+            <p>Masak makanan untuk memulihkan hunger.</p>
+
+            <button class="panelBtn primary" id="cookFish">
+                🐟 Cook Fish
+            </button>
+
+            <button class="panelBtn primary" id="cookBerry">
+                🫐 Cook Berry
+            </button>
+
+            <div class="row">
+                <span>Cooked Fish</span>
+                <b>${save.cookedFish}</b>
+            </div>
+
+            <div class="row">
+                <span>Cooked Berry</span>
+                <b>${save.cookedBerry}</b>
+            </div>
+        `;
+
+        p.querySelector("#cookFish").onclick=()=>{
+
+            if(!save.campfire){
+
+                toast("Buat Campfire dulu 🔥");
+                return;
+            }
+
+            if(save.fish<=0){
+
+                toast("Tidak punya ikan");
+                return;
+            }
+
+            save.fish--;
+            save.cookedFish++;
+
+            save.hunger=Math.min(
+                100,
+                save.hunger+30
+            );
+
+            toast("🐟 Ikan matang! +30 Hunger");
+            sound("success");
+
+            updateHUD();
+            saveGame();
+
+            closePanel();
+        };
+
+        p.querySelector("#cookBerry").onclick=()=>{
+
+            if(!save.campfire){
+
+                toast("Buat Campfire dulu 🔥");
+                return;
+            }
+
+            if(save.berry<=0){
+
+                toast("Tidak punya berry");
+                return;
+            }
+
+            save.berry--;
+            save.cookedBerry++;
+
+            save.hunger=Math.min(
+                100,
+                save.hunger+18
+            );
+
+            toast("🫐 Berry matang! +18 Hunger");
+
+            updateHUD();
+            saveGame();
+
+            closePanel();
+        };
+    }
+
+    // --------------------------------------------------------
+    // ANIMALS
+    // --------------------------------------------------------
+
+    let animals=[];
+
+    function createAnimal(type){
+
+        const p=randomIslandPoint(7,23);
+
+        const g=new THREE.Group();
+
+        g.position.set(p.x,0,p.z);
+
+        const body=new THREE.Mesh(
+            new THREE.BoxGeometry(
+                type==="boar"?1.3:1.0,
+                .65,
+                .7
+            ),
+            mat(
+                type==="boar"
+                ?0x5b3b27
+                :0xd2b28b
+            )
+        );
+
+        body.position.y=.65;
+        g.add(body);
+
+        const head=new THREE.Mesh(
+            new THREE.BoxGeometry(.55,.5,.55),
+            mat(
+                type==="boar"
+                ?0x493021
+                :0xb89470
+            )
+        );
+
+        head.position.set(
+            0,
+            .75,
+            -.62
+        );
+
+        g.add(head);
+
+        // legs
+        for(let x of [-.38,.38]){
+
+            for(let z of [-.25,.25]){
+
+                const leg=new THREE.Mesh(
+                    new THREE.BoxGeometry(.16,.5,.16),
+                    mat(0x4b3828)
+                );
+
+                leg.position.set(x,.25,z);
+                g.add(leg);
+            }
+        }
+
+        g.userData={
+            type:"animal",
+            animalType:type,
+            hp:type==="boar"?30:12,
+            dir:Math.random()*Math.PI*2,
+            timer:Math.random()*3
+        };
+
+        scene.add(g);
+        animals.push(g);
+    }
+
+    function createAnimals(){
+
+        if(animals.length>0)return;
+
+        for(let i=0;i<4;i++)
+            createAnimal("deer");
+
+        for(let i=0;i<2;i++)
+            createAnimal("boar");
+    }
+
+    function updateAnimals(dt){
+
+        animals.forEach(a=>{
+
+            if(!a.visible)return;
+
+            a.userData.timer-=dt;
+
+            if(a.userData.timer<=0){
+
+                a.userData.timer=
+                    1.5+Math.random()*4;
+
+                a.userData.dir+=
+                    (Math.random()-.5)*1.5;
+            }
+
+            const speed=
+                a.userData.animalType==="boar"
+                ?1.4
+                :.9;
+
+            a.position.x+=
+                Math.sin(a.userData.dir)*speed*dt;
+
+            a.position.z+=
+                Math.cos(a.userData.dir)*speed*dt;
+
+            const r=Math.sqrt(
+                a.position.x**2+
+                a.position.z**2
+            );
+
+            if(r>24){
+
+                a.userData.dir+=Math.PI;
+            }
+
+            a.rotation.y=a.userData.dir;
+
+            // tiny walking animation
+            a.position.y=
+                Math.abs(
+                    Math.sin(
+                        performance.now()*.008+
+                        a.position.x
+                    )
+                )*.025;
+        });
+    }
+
+    // --------------------------------------------------------
+    // WEATHER
+    // --------------------------------------------------------
+
+    let weatherTimer=0;
+
+    function updateWeather(dt){
+
+        weatherTimer-=dt;
+
+        if(weatherTimer<=0){
+
+            weatherTimer=
+                45+Math.random()*60;
+
+            const roll=Math.random();
+
+            if(roll<.58)
+                setWeather("clear");
+            else if(roll<.82)
+                setWeather("cloudy");
+            else
+                setWeather("rain");
+        }
+
+        if(b2weather){
+
+            const names={
+                clear:"☀️ CERAH",
+                cloudy:"☁️ MENDUNG",
+                rain:"🌧️ HUJAN"
+            };
+
+            b2weather.textContent=
+                names[save.weather]||"☀️ CERAH";
+        }
+    }
+
+    function setWeather(type){
+
+        save.weather=type;
+
+        if(b2rain){
+
+            b2rain.style.display=
+                type==="rain"?"block":"none";
+        }
+
+        if(type==="rain"){
+
+            hemi.intensity=Math.max(
+                .25,
+                hemi.intensity*.75
+            );
+
+            toast("🌧️ Hujan turun...");
+        }
+
+        saveGame();
+    }
+
+    // --------------------------------------------------------
+    // RARE RESOURCE
+    // --------------------------------------------------------
+
+    let rareCrystalMesh=null;
+
+    function createRareResource(){
+
+        if(rareCrystalMesh)return;
+
+        rareCrystalMesh=new THREE.Mesh(
+            new THREE.OctahedronGeometry(.55,0),
+            mat(0x8c7cff)
+        );
+
+        rareCrystalMesh.position.set(
+            -14,
+            .7,
+            -13
+        );
+
+        scene.add(rareCrystalMesh);
+    }
+
+    function collectRareResource(){
+
+        if(!rareCrystalMesh)return;
+
+        const d=player.position.distanceTo(
+            rareCrystalMesh.position
+        );
+
+        if(d<2.5){
+
+            rareCrystalMesh.visible=false;
+
+            save.rareCrystal++;
+
+            toast("💎 RARE CRYSTAL +1");
+
+            unlockAchievement(
+                "CRYSTAL HUNTER",
+                "Menemukan resource langka"
+            );
+
+            saveGame();
+        }
+    }
+
+    // --------------------------------------------------------
+    // ACHIEVEMENTS
+    // --------------------------------------------------------
+
+    function unlockAchievement(name,description){
+
+        if(save.achievements.includes(name))
+            return;
+
+        save.achievements.push(name);
+
+        if(b2ach){
+
+            b2ach.innerHTML=
+                `🏆 <b>${name}</b><br>${description}`;
+
+            b2ach.style.opacity="1";
+            b2ach.style.transform=
+                "translateX(-50%) translateY(0)";
+
+            setTimeout(()=>{
+
+                b2ach.style.opacity="0";
+                b2ach.style.transform=
+                    "translateX(-50%) translateY(-20px)";
+
+            },3000);
+        }
+
+        sound("success");
+        saveGame();
+    }
+
+    function checkAchievements(){
+
+        if(save.wood>=10)
+            unlockAchievement(
+                "WOODCUTTER",
+                "Kumpulkan 10 Wood"
+            );
+
+        if(save.stone>=10)
+            unlockAchievement(
+                "STONE MASTER",
+                "Kumpulkan 10 Stone"
+            );
+
+        if(save.coconut>=10)
+            unlockAchievement(
+                "COCONUT LOVER",
+                "Kumpulkan 10 Coconut"
+            );
+
+        if(save.fish>=5)
+            unlockAchievement(
+                "FISHERMAN",
+                "Tangkap 5 ikan"
+            );
+
+        if(save.campfire)
+            unlockAchievement(
+                "FIRST FIRE",
+                "Buat campfire pertama"
+            );
+
+        if(save.shelter)
+            unlockAchievement(
+                "SURVIVOR",
+                "Bangun shelter"
+            );
+
+        if(save.rareCrystal>0)
+            unlockAchievement(
+                "EXPLORER",
+                "Temukan crystal langka"
+            );
+    }
+
+    // --------------------------------------------------------
+    // STORY CHAPTERS
+    // --------------------------------------------------------
+
+    let lastChapter=save.chapter;
+
+    function updateStory(){
+
+        if(save.quest>=1 && save.chapter<2)
+            setChapter(2);
+
+        if(save.quest>=3 && save.chapter<3)
+            setChapter(3);
+
+        if(save.quest>=4 && save.chapter<4)
+            setChapter(4);
+
+        if(save.quest>=6 && save.chapter<5)
+            setChapter(5);
+    }
+
+    function setChapter(chapter){
+
+        if(chapter<=save.chapter)
+            return;
+
+        save.chapter=chapter;
+
+        const data={
+            2:[
+                "CHAPTER 2",
+                "Api pertama",
+                "Pulau ini mungkin tidak kosong."
+            ],
+            3:[
+                "CHAPTER 3",
+                "Jejak masa lalu",
+                "Reruntuhan menyimpan sesuatu."
+            ],
+            4:[
+                "CHAPTER 4",
+                "Sinyal terakhir",
+                "Kumpulkan material untuk memperbaiki beacon."
+            ],
+            5:[
+                "CHAPTER 5",
+                "PULANG",
+                "Signal beacon akhirnya aktif."
+            ]
+        };
+
+        const d=data[chapter];
+
+        if(!d)return;
+
+        showStory(d[0],d[1],d[2]);
+
+        saveGame();
+    }
+
+    function showStory(title,subtitle,text){
+
+        let box=document.getElementById("b2story");
+
+        if(!box){
+
+            box=document.createElement("div");
+            box.id="b2story";
+
+            box.innerHTML=`
+                <div id="b2storyBox">
+                    <h2 id="b2stTitle"></h2>
+                    <h3 id="b2stSub"></h3>
+                    <p id="b2stText"></p>
+                    <button class="panelBtn primary" id="b2stClose">
+                        CONTINUE
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(box);
+
+            box.querySelector("#b2stClose").onclick=()=>{
+                box.style.display="none";
+                paused=false;
+            };
+        }
+
+        box.querySelector("#b2stTitle").textContent=title;
+        box.querySelector("#b2stSub").textContent=subtitle;
+        box.querySelector("#b2stText").textContent=text;
+
+        box.style.display="flex";
+
+        paused=true;
+    }
+
+    // --------------------------------------------------------
+    // NIGHT BONUS
+    // --------------------------------------------------------
+
+    function updateNight(){
+
+        if(!player)return;
+
+        const d=Math.sqrt(
+            player.position.x**2+
+            player.position.z**2
+        );
+
+        // shelter gives safety bonus
+        if(save.shelter && d<5){
+
+            save.stamina=Math.min(
+                100,
+                save.stamina+.02
+            );
+        }
+    }
+
+    // --------------------------------------------------------
+    // PATCH ORIGINAL SURVIVAL
+    // --------------------------------------------------------
+
+    const originalGather=gather;
+
+    window.valenOriginalGather=originalGather;
+
+    // extra interaction:
+    // first gathers normal resources,
+    // then checks rare crystal.
+    function b2Interaction(){
+
+        collectRareResource();
+
+        checkAchievements();
+        updateStory();
+    }
+
+    // --------------------------------------------------------
+    // EXTRA GAME LOOP
+    // --------------------------------------------------------
+
+    setInterval(()=>{
+
+        if(!gameStarted || !scene || !player)
+            return;
+
+        if(paused)
+            return;
+
+        b2Interaction();
+
+        updateMiniMap();
+        updateAnimals(.25);
+        updateWeather(.25);
+        updateNight();
+
+    },250);
+
+    // --------------------------------------------------------
+    // CREATE EXTRA WORLD AFTER GAME START
+    // --------------------------------------------------------
+
+    let b2WorldReady=false;
+
+    setInterval(()=>{
+
+        if(!gameStarted || !scene || !player)
+            return;
+
+        if(b2WorldReady)
+            return;
+
+        b2WorldReady=true;
+
+        b2CreateUI();
+        createAnimals();
+        createRareResource();
+
+        toast("🏝️ Pulau siap dijelajahi!");
+
+    },500);
+
+    // --------------------------------------------------------
+    // BUILDING RESPAWN FROM SAVE
+    // --------------------------------------------------------
+
+    function restoreBuildings(){
+
+        if(!scene || !save.buildings)
+            return;
+
+        save.buildings.forEach(b=>{
+
+            if(!b || b._restored)
+                return;
+
+            b._restored=true;
+
+            if(b.type==="campfire"){
+
+                const g=new THREE.Group();
+
+                g.position.set(b.x,0.1,b.z);
+
+                for(let i=0;i<6;i++){
+
+                    const log=new THREE.Mesh(
+                        new THREE.CylinderGeometry(
+                            .12,.12,1.2,7
+                        ),
+                        mat(0x704528)
+                    );
+
+                    log.rotation.z=Math.PI/2;
+                    log.rotation.y=i*.5;
+
+                    g.add(log);
+                }
+
+                const fire=new THREE.Mesh(
+                    new THREE.ConeGeometry(
+                        .45,1.2,8
+                    ),
+                    mat(0xff7b21)
+                );
+
+                fire.position.y=.75;
+
+                g.add(fire);
+
+                scene.add(g);
+            }
+
+            if(b.type==="shelter"){
+
+                const g=new THREE.Group();
+
+                g.position.set(b.x,0,b.z);
+
+                const floor=new THREE.Mesh(
+                    new THREE.BoxGeometry(4,.25,4),
+                    mat(0x76502e)
+                );
+
+                floor.position.y=.15;
+                g.add(floor);
+
+                const roof=new THREE.Mesh(
+                    new THREE.ConeGeometry(3,2.4,4),
+                    mat(0x8d5b31)
+                );
+
+                roof.rotation.y=Math.PI/4;
+                roof.position.y=2.7;
+                g.add(roof);
+
+                for(let x of [-1.7,1.7]){
+
+                    for(let z of [-1.7,1.7]){
+
+                        const post=new THREE.Mesh(
+                            new THREE.CylinderGeometry(
+                                .14,.18,2.5,6
+                            ),
+                            mat(0x694526)
+                        );
+
+                        post.position.set(x,1.25,z);
+                        g.add(post);
+                    }
+                }
+
+                scene.add(g);
+            }
+
+            if(b.type==="storage"){
+
+                const box=new THREE.Mesh(
+                    new THREE.BoxGeometry(1.6,1,1.2),
+                    mat(0x694526)
+                );
+
+                box.position.set(b.x,.65,b.z);
+
+                scene.add(box);
+            }
+        });
+    }
+
+    setInterval(()=>{
+
+        if(gameStarted && scene)
+            restoreBuildings();
+
+    },1000);
+
+    // --------------------------------------------------------
+    // EXTRA GATHER PATCH
+    // --------------------------------------------------------
+
+    setInterval(()=>{
+
+        if(!gameStarted || paused || !player)
+            return;
+
+        // automatic achievement check
+        checkAchievements();
+
+        // rare crystal proximity
+        collectRareResource();
+
+    },3000);
+
+    // --------------------------------------------------------
+    // BETTER RESOURCE FEEDBACK
+    // --------------------------------------------------------
+
+    setInterval(()=>{
+
+        if(!gameStarted || paused || !player)
+            return;
+
+        const nearest=findNearest();
+
+        if(nearest){
+
+            const type=nearest.userData.type;
+
+            if(type==="tree")
+                ui.action.textContent="🪓 WOOD";
+
+            else if(type==="rock")
+                ui.action.textContent="⛏️ STONE";
+
+            else if(type==="palm")
+                ui.action.textContent="🥥 COCONUT";
+
+            else if(type==="bush")
+                ui.action.textContent="🫐 BERRY";
+
+        }else{
+
+            ui.action.textContent="🪓";
+        }
+
+    },250);
+
+    // --------------------------------------------------------
+    // AUTO SAVE
+    // --------------------------------------------------------
+
+    setInterval(()=>{
+
+        if(gameStarted && player)
+            saveGame();
+
+    },10000);
+
+    // --------------------------------------------------------
+    // PATCH GAME START
+    // --------------------------------------------------------
+
+    const oldStartGame=startGame;
+
+    window.valenStartGameOriginal=oldStartGame;
+
+})();
