@@ -3816,3 +3816,797 @@ function animate(){
     window.valenStartGameOriginal=oldStartGame;
 
 })();
+/* =========================================================
+   VALEN ISLAND SURVIVAL — BLOCK 3
+   FINAL POLISH / VISUAL / PERFORMANCE / EFFECTS
+   ========================================================= */
+
+(function(){
+
+if(window.__VALEN_BLOCK3__) return;
+window.__VALEN_BLOCK3__ = true;
+
+window.VIS3 = window.VIS3 || {};
+var V3 = window.VIS3;
+
+/* =========================
+   DEFAULT SETTINGS
+========================= */
+
+if(typeof settings === "object"){
+    settings.fps = settings.fps || 60;
+    settings.effects = settings.effects !== false;
+    settings.shadow = settings.shadow !== false;
+    settings.cameraShake = settings.cameraShake !== false;
+    settings.autoPickup = !!settings.autoPickup;
+    settings.damageNumbers = settings.damageNumbers !== false;
+    settings.viewDistance = settings.viewDistance || 100;
+}
+
+/* =========================
+   COLORS / ATMOSPHERE
+========================= */
+
+V3.skyDay = new THREE.Color(0x72c8ee);
+V3.skySunset = new THREE.Color(0xf28b62);
+V3.skyNight = new THREE.Color(0x06111e);
+
+V3.tmpColor = new THREE.Color();
+V3.time = 0;
+V3.shake = 0;
+V3.shakePower = 0;
+V3.flash = 0;
+
+/* =========================
+   TOAST SYSTEM
+========================= */
+
+V3.toast = function(text, duration){
+
+    duration = duration || 2200;
+
+    var old = document.getElementById("valen-v3-toast");
+
+    if(old) old.remove();
+
+    var el = document.createElement("div");
+
+    el.id = "valen-v3-toast";
+
+    el.textContent = text;
+
+    el.style.cssText = `
+        position:fixed;
+        left:50%;
+        bottom:12%;
+        transform:translateX(-50%);
+        z-index:10000;
+        padding:12px 20px;
+        border-radius:14px;
+        background:rgba(5,15,25,.88);
+        border:1px solid rgba(255,255,255,.18);
+        color:white;
+        font-weight:bold;
+        font-size:15px;
+        box-shadow:0 8px 30px rgba(0,0,0,.45);
+        pointer-events:none;
+        opacity:0;
+        transition:.25s;
+        text-align:center;
+        max-width:80%;
+    `;
+
+    document.body.appendChild(el);
+
+    requestAnimationFrame(function(){
+        el.style.opacity="1";
+    });
+
+    setTimeout(function(){
+        el.style.opacity="0";
+
+        setTimeout(function(){
+            el.remove();
+        },300);
+
+    },duration);
+};
+
+/* =========================
+   SCREEN FLASH
+========================= */
+
+V3.createFlash = function(){
+
+    if(document.getElementById("valen-v3-flash")) return;
+
+    var f=document.createElement("div");
+
+    f.id="valen-v3-flash";
+
+    f.style.cssText=`
+        position:fixed;
+        inset:0;
+        z-index:9998;
+        pointer-events:none;
+        background:rgba(255,40,40,.35);
+        opacity:0;
+        transition:opacity .12s;
+    `;
+
+    document.body.appendChild(f);
+};
+
+V3.damageFlash=function(){
+
+    var f=document.getElementById("valen-v3-flash");
+
+    if(!f) return;
+
+    f.style.opacity="1";
+
+    setTimeout(function(){
+        f.style.opacity="0";
+    },100);
+};
+
+V3.createFlash();
+
+/* =========================
+   CAMERA SHAKE
+========================= */
+
+V3.addShake=function(power){
+
+    if(settings && settings.cameraShake===false) return;
+
+    V3.shake=Math.max(V3.shake,power||0.12);
+};
+
+/* =========================
+   FLOATING TEXT
+========================= */
+
+V3.floatText=function(text,color){
+
+    if(settings && settings.damageNumbers===false) return;
+
+    if(!player) return;
+
+    var pos=player.position.clone();
+
+    pos.y+=2.5;
+
+    var div=document.createElement("div");
+
+    div.textContent=text;
+
+    div.style.cssText=`
+        position:fixed;
+        z-index:10001;
+        color:${color||"#ffffff"};
+        font-weight:900;
+        font-size:18px;
+        text-shadow:0 2px 5px #000;
+        pointer-events:none;
+        transform:translate(-50%,-50%);
+        transition:all .7s ease-out;
+    `;
+
+    document.body.appendChild(div);
+
+    var start=performance.now();
+
+    function move(){
+
+        var t=(performance.now()-start)/700;
+
+        if(t>=1){
+
+            div.remove();
+            return;
+
+        }
+
+        pos.y+=0.025;
+
+        var p=pos.clone().project(camera);
+
+        div.style.left=((p.x*.5+.5)*innerWidth)+"px";
+        div.style.top=((-p.y*.5+.5)*innerHeight)+"px";
+        div.style.opacity=String(1-t);
+
+        requestAnimationFrame(move);
+    }
+
+    move();
+};
+
+/* =========================
+   VIGNETTE
+========================= */
+
+V3.createVignette=function(){
+
+    if(document.getElementById("valen-v3-vignette")) return;
+
+    var v=document.createElement("div");
+
+    v.id="valen-v3-vignette";
+
+    v.style.cssText=`
+        position:fixed;
+        inset:0;
+        pointer-events:none;
+        z-index:9997;
+        background:
+        radial-gradient(
+            circle at center,
+            transparent 45%,
+            rgba(0,0,0,.32) 100%
+        );
+    `;
+
+    document.body.appendChild(v);
+};
+
+V3.createVignette();
+
+/* =========================
+   PARTICLE SYSTEM
+========================= */
+
+V3.particles=[];
+V3.particleGroup=new THREE.Group();
+
+scene.add(V3.particleGroup);
+
+V3.makeParticle=function(){
+
+    var geo=new THREE.SphereGeometry(.035,4,4);
+
+    var mat=new THREE.MeshBasicMaterial({
+        color:0xffffff,
+        transparent:true,
+        opacity:.7
+    });
+
+    var p=new THREE.Mesh(geo,mat);
+
+    p.position.set(
+        (Math.random()-.5)*90,
+        3+Math.random()*12,
+        (Math.random()-.5)*90
+    );
+
+    p.userData={
+        speed:.3+Math.random()*.7,
+        drift:(Math.random()-.5)*.2
+    };
+
+    V3.particleGroup.add(p);
+    V3.particles.push(p);
+};
+
+for(var i=0;i<45;i++){
+    V3.makeParticle();
+}
+
+/* =========================
+   FIRE EMBERS
+========================= */
+
+V3.embers=[];
+V3.emberGroup=new THREE.Group();
+
+scene.add(V3.emberGroup);
+
+for(var e=0;e<20;e++){
+
+    var eg=new THREE.SphereGeometry(.04,4,4);
+
+    var em=new THREE.MeshBasicMaterial({
+        color:0xffb347,
+        transparent:true,
+        opacity:.8
+    });
+
+    var ember=new THREE.Mesh(eg,em);
+
+    ember.visible=false;
+
+    ember.userData={
+        life:0,
+        speed:.5+Math.random()*1
+    };
+
+    V3.emberGroup.add(ember);
+    V3.embers.push(ember);
+}
+
+/* =========================
+   STAR TWINKLE
+========================= */
+
+V3.starObjects=[];
+
+scene.traverse(function(o){
+
+    if(
+        o.isPoints ||
+        o.isSprite
+    ){
+        V3.starObjects.push(o);
+    }
+
+});
+
+/* =========================
+   WATER GLOW
+========================= */
+
+V3.waterTime=0;
+
+/* =========================
+   DAY/NIGHT POLISH
+========================= */
+
+V3.updateSky=function(dt){
+
+    if(typeof save==="undefined") return;
+
+    V3.time += dt;
+
+    var t=(save.time||0)%24;
+
+    var target;
+
+    if(t>=6 && t<10){
+
+        var p=(t-6)/4;
+
+        V3.tmpColor.copy(V3.skyNight).lerp(V3.skyDay,p);
+
+    }else if(t>=10 && t<17){
+
+        V3.tmpColor.copy(V3.skyDay);
+
+    }else if(t>=17 && t<20){
+
+        var p2=(t-17)/3;
+
+        V3.tmpColor.copy(V3.skyDay).lerp(V3.skySunset,p2);
+
+    }else{
+
+        V3.tmpColor.copy(V3.skyNight);
+
+    }
+
+    if(scene.background){
+
+        scene.background.lerp(V3.tmpColor,.025);
+
+    }
+
+};
+
+/* =========================
+   PARTICLES UPDATE
+========================= */
+
+V3.updateParticles=function(dt){
+
+    for(var i=0;i<V3.particles.length;i++){
+
+        var p=V3.particles[i];
+
+        p.position.y-=p.userData.speed*dt;
+        p.position.x+=p.userData.drift*dt;
+
+        if(p.position.y<1){
+
+            p.position.y=12+Math.random()*5;
+            p.position.x=(Math.random()-.5)*90;
+            p.position.z=(Math.random()-.5)*90;
+
+        }
+
+    }
+
+};
+
+/* =========================
+   EMBERS UPDATE
+========================= */
+
+V3.updateEmbers=function(dt){
+
+    for(var i=0;i<V3.embers.length;i++){
+
+        var p=V3.embers[i];
+
+        if(!p.visible) continue;
+
+        p.position.y+=p.userData.speed*dt;
+
+        p.userData.life-=dt;
+
+        p.material.opacity=Math.max(
+            0,
+            p.userData.life
+        );
+
+        if(p.userData.life<=0){
+
+            p.visible=false;
+
+        }
+
+    }
+
+};
+
+/* =========================
+   FIRE EFFECT
+========================= */
+
+V3.spawnEmbers=function(pos){
+
+    if(settings && settings.effects===false) return;
+
+    for(var i=0;i<3;i++){
+
+        var ember=null;
+
+        for(var j=0;j<V3.embers.length;j++){
+
+            if(!V3.embers[j].visible){
+
+                ember=V3.embers[j];
+                break;
+
+            }
+
+        }
+
+        if(!ember) return;
+
+        ember.visible=true;
+
+        ember.position.copy(pos);
+
+        ember.position.x+=(Math.random()-.5)*.5;
+        ember.position.z+=(Math.random()-.5)*.5;
+
+        ember.userData.life=.5+Math.random()*.6;
+
+        ember.material.opacity=1;
+
+    }
+
+};
+
+/* =========================
+   BETTER RENDER QUALITY
+========================= */
+
+V3.applyGraphics=function(){
+
+    if(typeof renderer==="undefined") return;
+
+    var quality=(settings && settings.graphics)||"High";
+
+    var ratio=window.devicePixelRatio||1;
+
+    if(quality==="Low") ratio=Math.min(ratio,1);
+    if(quality==="Medium") ratio=Math.min(ratio,1.5);
+    if(quality==="High") ratio=Math.min(ratio,2);
+
+    renderer.setPixelRatio(ratio);
+
+    renderer.setSize(
+        innerWidth,
+        innerHeight,
+        false
+    );
+
+    if(renderer.shadowMap){
+
+        renderer.shadowMap.enabled =
+            !(settings && settings.shadow===false);
+
+    }
+
+};
+
+setTimeout(function(){
+    V3.applyGraphics();
+},1000);
+
+window.addEventListener("resize",function(){
+
+    setTimeout(function(){
+        V3.applyGraphics();
+    },50);
+
+});
+
+/* =========================
+   CAMERA SHAKE PATCH
+========================= */
+
+if(typeof updateCamera==="function"){
+
+    var V3_oldCamera=updateCamera;
+
+    updateCamera=function(dt){
+
+        V3_oldCamera(dt);
+
+        if(V3.shake>0){
+
+            var s=V3.shake;
+
+            camera.position.x+=(Math.random()-.5)*s;
+            camera.position.y+=(Math.random()-.5)*s;
+            camera.position.z+=(Math.random()-.5)*s;
+
+            V3.shake=Math.max(
+                0,
+                V3.shake-dt*1.8
+            );
+
+        }
+
+    };
+
+}
+
+/* =========================
+   WORLD UPDATE PATCH
+========================= */
+
+if(typeof updateWorld==="function"){
+
+    var V3_oldWorld=updateWorld;
+
+    updateWorld=function(dt){
+
+        V3_oldWorld(dt);
+
+        V3.updateSky(dt);
+        V3.updateParticles(dt);
+        V3.updateEmbers(dt);
+
+    };
+
+}
+
+/* =========================
+   SURVIVAL DAMAGE PATCH
+========================= */
+
+if(typeof updateSurvival==="function"){
+
+    var V3_oldSurvival=updateSurvival;
+
+    updateSurvival=function(dt){
+
+        V3_oldSurvival(dt);
+
+        if(
+            typeof save!=="undefined" &&
+            save.health!==undefined &&
+            save.health<=25
+        ){
+
+            V3.damageFlash();
+
+        }
+
+    };
+
+}
+
+/* =========================
+   ACTION FEEDBACK
+========================= */
+
+if(typeof gather==="function"){
+
+    var V3_oldGather=gather;
+
+    gather=function(){
+
+        var beforeWood=
+            typeof save!=="undefined" ?
+            (save.wood||0):0;
+
+        var beforeStone=
+            typeof save!=="undefined" ?
+            (save.stone||0):0;
+
+        var beforeBerry=
+            typeof save!=="undefined" ?
+            (save.berries||0):0;
+
+        V3_oldGather();
+
+        if(typeof save!=="undefined"){
+
+            if((save.wood||0)>beforeWood){
+
+                V3.floatText(
+                    "+ WOOD",
+                    "#c99b6b"
+                );
+
+                V3.addShake(.035);
+
+            }
+
+            if((save.stone||0)>beforeStone){
+
+                V3.floatText(
+                    "+ STONE",
+                    "#b8c1ca"
+                );
+
+                V3.addShake(.04);
+
+            }
+
+            if((save.berries||0)>beforeBerry){
+
+                V3.floatText(
+                    "+ BERRY",
+                    "#ff78a8"
+                );
+
+            }
+
+        }
+
+    };
+
+}
+
+/* =========================
+   BETTER BUTTON STYLE
+========================= */
+
+V3.styleButtons=function(){
+
+    var buttons=document.querySelectorAll("button");
+
+    buttons.forEach(function(b){
+
+        if(b.dataset.v3styled) return;
+
+        b.dataset.v3styled="1";
+
+        b.style.transition=
+            "transform .08s, filter .15s, box-shadow .15s";
+
+        b.addEventListener(
+            "touchstart",
+            function(){
+
+                b.style.filter="brightness(1.3)";
+
+            },
+            {passive:true}
+        );
+
+        b.addEventListener(
+            "touchend",
+            function(){
+
+                b.style.filter="";
+
+            },
+            {passive:true}
+        );
+
+    });
+
+};
+
+setTimeout(V3.styleButtons,500);
+
+setInterval(V3.styleButtons,3000);
+
+/* =========================
+   FPS MONITOR
+========================= */
+
+V3.frames=0;
+V3.fps=60;
+V3.fpsTime=performance.now();
+
+setInterval(function(){
+
+    var now=performance.now();
+    var delta=now-V3.fpsTime;
+
+    if(delta>0){
+
+        V3.fps=
+            Math.round(
+                V3.frames*1000/delta
+            );
+
+    }
+
+    V3.frames=0;
+    V3.fpsTime=now;
+
+},1000);
+
+/* =========================
+   MAIN LOOP PATCH
+========================= */
+
+if(typeof animate==="function"){
+
+    var V3_oldRender=renderer.render.bind(renderer);
+
+    renderer.render=function(){
+
+        V3.frames++;
+
+        V3_oldRender.apply(
+            renderer,
+            arguments
+        );
+
+    };
+
+}
+
+/* =========================
+   PERFORMANCE WARNING
+========================= */
+
+V3.performanceCheck=function(){
+
+    if(V3.fps<24){
+
+        V3.toast(
+            "⚡ FPS rendah — coba Graphics: Medium",
+            3000
+        );
+
+    }
+
+};
+
+setInterval(
+    V3.performanceCheck,
+    10000
+);
+
+/* =========================
+   START MESSAGE
+========================= */
+
+setTimeout(function(){
+
+    if(typeof gameStarted!=="undefined" &&
+       gameStarted){
+
+        V3.toast(
+            "🌴 VALEN ISLAND • SURVIVAL",
+            2200
+        );
+
+    }
+
+},1800);
+
+console.log(
+    "VALEN ISLAND SURVIVAL — BLOCK 3 LOADED"
+);
+
+})();
